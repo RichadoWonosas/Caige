@@ -1,0 +1,574 @@
+<script setup lang="ts">
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { useRegisterSW } from 'virtual:pwa-register/vue'
+import {
+  ArrowDown, ArrowUp, BookOpen, Check, CircleHelp, Copy, Dices, Download,
+  Image, Languages, LockKeyhole, Play, Plus, RotateCcw, Save, Settings2,
+  Shuffle, Swords, Trash2, Type, Upload,
+} from 'lucide-vue-next'
+import AppModal from './components/AppModal.vue'
+import QuestionBoard from './components/QuestionBoard.vue'
+import ActionHistory from './components/ActionHistory.vue'
+import { useSettingsStore } from './stores/settings'
+import { usePlainStore } from './stores/plain'
+import { useBattleStore } from './stores/battle'
+import type { CharacterControl, GameAction, GameState, Locale, Question, ThemePreference } from './domain/game'
+import { CATEGORY_KEYS } from './domain/game'
+import { guessedForQuestion, getQuestionStatus, revealQuestion } from './domain/reveal'
+import { standardRuleset } from './domain/rulesets/standard-v1'
+import { copyBoardImage } from './features/screenshot/render'
+import { loadGameState, saveGameState, validateImportedState } from './persistence/indexed-db'
+
+const settings = useSettingsStore()
+const plain = usePlainStore()
+const battle = useBattleStore()
+const { t, locale } = useI18n()
+
+const helpOpen = ref(false)
+const toastMessage = ref('')
+const hydrated = ref(false)
+const saveStatus = ref<'saved' | 'saving'>('saved')
+const guessType = ref<'guess-letter' | 'guess-answer'>('guess-letter')
+const guessValue = ref('')
+const targetQuestionId = ref('')
+const fileInput = ref<HTMLInputElement | null>(null)
+const pendingImport = ref<GameState | null>(null)
+const confirmState = ref<{ kind: 'reset' | 'delete-player' | 'import'; playerId?: string } | null>(null)
+const isDark = ref(false)
+let toastTimer: ReturnType<typeof setTimeout> | undefined
+let saveTimer: ReturnType<typeof setTimeout> | undefined
+let themeMedia: MediaQueryList | undefined
+
+const currentQuestions = computed(() => settings.mode === 'song-battle-royale' ? battle.questions : plain.questions)
+const currentPlayers = computed(() => settings.mode === 'song-battle-royale'
+  ? battle.turnOrder.map((id) => battle.players.find((player) => player.id === id)).filter((player): player is NonNullable<typeof player> => Boolean(player))
+  : [])
+const currentActions = computed(() => settings.mode === 'song-battle-royale' ? battle.actionHistory : plain.actionHistory)
+const currentActor = computed(() => battle.players.find((player) => player.id === battle.currentActorId))
+const outcomeMap = computed(() => new Map(battle.outcomes.map((outcome) => [outcome.playerId, outcome.status])))
+const allPlainSolved = computed(() => plain.questions.length > 0 && plain.questions.every((question) =>
+  getQuestionStatus(question, plain.guessedLetters, plain.actionHistory) === 'solved',
+))
+
+const guessesByQuestion = computed<Record<string, string[]>>(() => Object.fromEntries(currentQuestions.value.map((question) => [
+  question.id,
+  settings.mode === 'song-battle-royale' ? guessedForQuestion(battle.actionHistory, question.id) : plain.guessedLetters,
+])))
+
+const eligibleBattleQuestions = computed(() => {
+  if (!battle.currentActorId) return battle.questions
+  return battle.questions.filter((question) => standardRuleset.canTargetQuestion(
+    battle.$state,
+    battle.currentActorId!,
+    question.id,
+    { type: guessType.value },
+    battle.rulesetConfig,
+  ))
+})
+
+const selectableQuestions = computed(() => settings.mode === 'song-battle-royale' ? eligibleBattleQuestions.value : plain.questions)
+const needsTarget = computed(() => guessType.value === 'guess-answer' || (settings.mode === 'song-battle-royale' && battle.rulesetConfig.letterScope === 'target'))
+const canSubmit = computed(() => {
+  if (!guessValue.value.trim()) return false
+  if (settings.mode === 'song-battle-royale' && battle.phase !== 'playing') return false
+  return !needsTarget.value || Boolean(targetQuestionId.value)
+})
+
+const confirmTitle = computed(() => {
+  if (confirmState.value?.kind === 'delete-player') return t('dialog.deletePlayerTitle')
+  if (confirmState.value?.kind === 'import') return t('dialog.importTitle')
+  return t('dialog.resetTitle')
+})
+const confirmDescription = computed(() => {
+  if (confirmState.value?.kind === 'delete-player') return t('dialog.deletePlayerBody')
+  if (confirmState.value?.kind === 'import') return t('dialog.importBody')
+  return t('dialog.resetBody')
+})
+
+const { needRefresh, offlineReady, updateServiceWorker } = useRegisterSW({ immediate: true })
+
+function showToast(message: string) {
+  toastMessage.value = message
+  clearTimeout(toastTimer)
+  toastTimer = setTimeout(() => { toastMessage.value = '' }, 3200)
+}
+
+function stateSnapshot(): GameState {
+  return JSON.parse(JSON.stringify({
+    schemaVersion: 1,
+    mode: settings.mode,
+    plain: plain.$state,
+    battleRoyale: battle.$state,
+    distinguishCharacterTypes: settings.distinguishCharacterTypes,
+    visibleCategories: settings.visibleCategories,
+    updatedAt: new Date().toISOString(),
+  })) as GameState
+}
+
+function applyState(state: GameState) {
+  settings.mode = state.mode
+  settings.distinguishCharacterTypes = state.distinguishCharacterTypes
+  settings.visibleCategories = { ...state.visibleCategories }
+  plain.$patch(state.plain)
+  battle.$patch(state.battleRoyale)
+}
+
+function applyTheme() {
+  const dark = settings.theme === 'dark' || (settings.theme === 'system' && Boolean(themeMedia?.matches))
+  isDark.value = dark
+  document.documentElement.classList.toggle('dark', dark)
+  document.documentElement.style.colorScheme = dark ? 'dark' : 'light'
+}
+
+function onThemeChange(event: Event) {
+  settings.setTheme((event.target as HTMLSelectElement).value as ThemePreference)
+}
+
+function onLocaleChange(event: Event) {
+  settings.setLocale((event.target as HTMLSelectElement).value as Locale)
+}
+
+function switchMode(mode: GameState['mode']) {
+  if (settings.mode === mode) return
+  settings.mode = mode
+  guessValue.value = ''
+  targetQuestionId.value = ''
+}
+
+function addBattleQuestion() {
+  const authorId = battle.turnOrder[0]
+  if (!authorId) {
+    battle.addPlayer()
+    battle.addQuestion(battle.turnOrder[0])
+    return
+  }
+  battle.addQuestion(authorId)
+}
+
+function questionChanged(question: Question) {
+  if (settings.mode === 'song-battle-royale') battle.normalizeQuestionControls(question.id)
+  else plain.normalizeQuestionControls(question.id)
+}
+
+function playerQuestionCount(playerId: string) {
+  return battle.questions.filter((question) => question.authorPlayerId === playerId).length
+}
+
+function startGame() {
+  const violations = battle.startGame()
+  if (violations.length) {
+    showToast(t(`errors.${violations[0].code}`))
+    return
+  }
+  showToast(t('toast.started'))
+  nextTick(() => document.querySelector<HTMLInputElement>('#guess-input')?.focus())
+}
+
+function submitGuess() {
+  if (!canSubmit.value) {
+    showToast(t('toast.invalid'))
+    return
+  }
+  let result: 'hit' | 'miss' | 'invalid' | 'solved'
+  if (settings.mode === 'give-your-letters') {
+    result = guessType.value === 'guess-letter'
+      ? plain.submitLetter(guessValue.value)
+      : plain.submitAnswer(targetQuestionId.value, guessValue.value)
+  } else {
+    const applied = battle.submitAction({
+      type: guessType.value,
+      questionId: needsTarget.value ? targetQuestionId.value : undefined,
+      value: guessValue.value,
+    })
+    result = applied.result
+  }
+  showToast(t(`toast.${result}`))
+  if (result !== 'invalid') guessValue.value = ''
+}
+
+function cycleControl(questionId: string, index: number) {
+  const question = currentQuestions.value.find((item) => item.id === questionId)
+  if (!question) return
+  questionChanged(question)
+  const order: CharacterControl[] = ['auto', 'show', 'hide']
+  question.characterControls[index] = order[(order.indexOf(question.characterControls[index] ?? 'auto') + 1) % order.length]
+}
+
+function bulkControl(questionId: string, control: CharacterControl) {
+  const question = currentQuestions.value.find((item) => item.id === questionId)
+  if (!question) return
+  questionChanged(question)
+  question.characterControls = question.characterControls.map(() => control)
+}
+
+function toggleSolved(questionId: string) {
+  const question = currentQuestions.value.find((item) => item.id === questionId)
+  if (question) question.hostStatusOverride = question.hostStatusOverride === 'solved' ? 'auto' : 'solved'
+}
+
+function randomizeOrder() {
+  if (settings.mode === 'song-battle-royale') battle.randomizePlayers()
+  else plain.randomizeQuestions()
+  showToast(t('toast.shuffled'))
+}
+
+function restoreOrder() {
+  if (settings.mode === 'song-battle-royale') battle.restorePlayers()
+  else plain.restoreQuestions()
+  showToast(t('toast.restoredOrder'))
+}
+
+function requestReset() { confirmState.value = { kind: 'reset' } }
+function requestDeletePlayer(playerId: string) { confirmState.value = { kind: 'delete-player', playerId } }
+
+function executeConfirm() {
+  const state = confirmState.value
+  confirmState.value = null
+  if (state?.kind === 'delete-player' && state.playerId) battle.removePlayer(state.playerId)
+  if (state?.kind === 'reset') {
+    if (settings.mode === 'song-battle-royale') battle.resetGame()
+    else plain.resetGame()
+    showToast(t('toast.reset'))
+  }
+  if (state?.kind === 'import' && pendingImport.value) {
+    applyState(pendingImport.value)
+    pendingImport.value = null
+    showToast(t('toast.imported'))
+  }
+}
+
+function downloadText(content: string, filename: string, type: string) {
+  const url = URL.createObjectURL(new Blob([content], { type }))
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = filename
+  anchor.click()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
+function exportState() {
+  downloadText(JSON.stringify(stateSnapshot(), null, 2), `caige-backup-${new Date().toISOString().slice(0, 10)}.json`, 'application/json')
+  showToast(t('toast.exported'))
+}
+
+async function importState(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file || file.size > 2_000_000) return showToast(t('errors.import'))
+  try {
+    const value = JSON.parse(await file.text())
+    if (!validateImportedState(value)) throw new Error('invalid')
+    pendingImport.value = value
+    confirmState.value = { kind: 'import' }
+  } catch { showToast(t('errors.import')) }
+}
+
+function historyLine(action: GameAction | (typeof plain.actionHistory)[number]) {
+  const actor = 'actorPlayerId' in action ? battle.players.find((player) => player.id === action.actorPlayerId)?.name : ''
+  const text = t(action.type === 'guess-letter' ? 'history.letter' : 'history.answer', { value: action.value })
+  return `${actor ? `${actor} · ` : ''}${text} · ${t(`history.result.${action.result}`)}`
+}
+
+async function copyImage() {
+  try {
+    const result = await copyBoardImage({
+      title: `${t('brand.name')} · ${t(settings.mode === 'song-battle-royale' ? 'mode.battle' : 'mode.plain')}`,
+      subtitle: new Intl.DateTimeFormat(settings.locale, { dateStyle: 'long', timeStyle: 'short' }).format(new Date()),
+      theme: isDark.value ? 'dark' : 'light',
+      currentActor: currentActor.value ? `${t('game.currentTurn')} · ${currentActor.value.name}` : undefined,
+      players: currentPlayers.value.map((player) => ({ name: player.name || '—', status: t(`player.status.${outcomeMap.value.get(player.id) || 'active'}`) })),
+      questions: currentQuestions.value.map((question) => ({
+        title: question.title,
+        author: battle.players.find((player) => player.id === question.authorPlayerId)?.name,
+        status: t(`question.status.${getQuestionStatus(question, guessesByQuestion.value[question.id] ?? [], currentActions.value)}`),
+        display: revealQuestion(question, guessesByQuestion.value[question.id] ?? [], currentActions.value).map((item) => item.revealed ? item.character : '＿').join(''),
+      })),
+      history: currentActions.value.map(historyLine),
+    })
+    showToast(t(result === 'copied' ? 'toast.copied' : 'toast.downloaded'))
+  } catch { showToast(t('errors.generic')) }
+}
+
+async function performUpdate() {
+  try { await saveGameState(stateSnapshot()) } finally { await updateServiceWorker(true) }
+}
+
+function onKeydown(event: KeyboardEvent) {
+  const target = event.target as HTMLElement | null
+  if (target?.matches('input, textarea, select, [contenteditable="true"]')) return
+  if (!event.ctrlKey || !event.shiftKey) return
+  const key = event.key.toLowerCase()
+  if (!['g', 'r', 'c', 'f'].includes(key)) return
+  event.preventDefault()
+  if (key === 'g') randomizeOrder()
+  if (key === 'r') restoreOrder()
+  if (key === 'c') requestReset()
+  if (key === 'f') void copyImage()
+}
+
+watch(() => settings.locale, (value) => { locale.value = value }, { immediate: true })
+watch(() => settings.theme, applyTheme)
+watch([selectableQuestions, needsTarget], () => {
+  if (!needsTarget.value) targetQuestionId.value = ''
+  else if (!selectableQuestions.value.some((question) => question.id === targetQuestionId.value)) targetQuestionId.value = selectableQuestions.value[0]?.id ?? ''
+}, { immediate: true })
+watch(offlineReady, (ready) => { if (ready) showToast(t('pwa.offlineReady')) })
+
+watch(
+  [() => settings.mode, () => settings.distinguishCharacterTypes, () => settings.visibleCategories, () => plain.$state, () => battle.$state],
+  () => {
+    if (!hydrated.value) return
+    saveStatus.value = 'saving'
+    clearTimeout(saveTimer)
+    saveTimer = setTimeout(async () => {
+      try {
+        await saveGameState(stateSnapshot())
+        saveStatus.value = 'saved'
+      } catch {
+        saveStatus.value = 'saved'
+        showToast(t('errors.storage'))
+      }
+    }, 550)
+  },
+  { deep: true },
+)
+
+onMounted(async () => {
+  themeMedia = window.matchMedia('(prefers-color-scheme: dark)')
+  themeMedia.addEventListener('change', applyTheme)
+  applyTheme()
+  window.addEventListener('keydown', onKeydown)
+  try {
+    const saved = await loadGameState()
+    if (saved && validateImportedState(saved)) {
+      applyState(saved)
+      showToast(t('toast.restored'))
+    }
+  } catch { /* start with in-memory defaults */ }
+  hydrated.value = true
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onKeydown)
+  themeMedia?.removeEventListener('change', applyTheme)
+  clearTimeout(toastTimer)
+  clearTimeout(saveTimer)
+})
+</script>
+
+<template>
+  <div class="app-shell">
+    <header class="topbar">
+      <a class="brand" href="#" aria-label="Caige home">
+        <span class="brand-mark">C<span>·</span></span>
+        <span><strong>{{ $t('brand.name') }}</strong><small>LOCAL GAME KIT</small></span>
+      </a>
+
+      <nav class="mode-switcher" :aria-label="$t('mode.label')">
+        <button type="button" :class="{ active: settings.mode === 'song-battle-royale' }" @click="switchMode('song-battle-royale')">
+          <Swords :size="17" aria-hidden="true" />
+          <span><strong>{{ $t('mode.battle') }}</strong><small>{{ $t('mode.battleNote') }}</small></span>
+        </button>
+        <button type="button" :class="{ active: settings.mode === 'give-your-letters' }" @click="switchMode('give-your-letters')">
+          <Type :size="17" aria-hidden="true" />
+          <span><strong>{{ $t('mode.plain') }}</strong><small>{{ $t('mode.plainNote') }}</small></span>
+        </button>
+      </nav>
+
+      <div class="topbar-actions">
+        <span class="save-state"><Save :size="15" aria-hidden="true" />{{ $t(saveStatus === 'saved' ? 'toolbar.saved' : 'toolbar.saving') }}</span>
+        <label class="select-control" :title="$t('toolbar.theme')">
+          <Settings2 :size="16" aria-hidden="true" />
+          <select :value="settings.theme" :aria-label="$t('toolbar.theme')" @change="onThemeChange">
+            <option value="system">{{ $t('theme.system') }}</option>
+            <option value="light">{{ $t('theme.light') }}</option>
+            <option value="dark">{{ $t('theme.dark') }}</option>
+          </select>
+        </label>
+        <label class="select-control" :title="$t('toolbar.language')">
+          <Languages :size="16" aria-hidden="true" />
+          <select :value="settings.locale" :aria-label="$t('toolbar.language')" @change="onLocaleChange">
+            <option value="zh-Hans">简体中文</option><option value="zh-Hant">繁體中文</option><option value="en-US">English</option><option value="ja-JP">日本語</option>
+          </select>
+        </label>
+        <button class="icon-button" type="button" :title="$t('actions.export')" :aria-label="$t('actions.export')" @click="exportState"><Download :size="18" /></button>
+        <button class="icon-button" type="button" :title="$t('actions.import')" :aria-label="$t('actions.import')" @click="fileInput?.click()"><Upload :size="18" /></button>
+        <button class="icon-button" type="button" :title="$t('toolbar.help')" :aria-label="$t('toolbar.help')" @click="helpOpen = true"><CircleHelp :size="19" /></button>
+      </div>
+    </header>
+
+    <div v-if="needRefresh" class="update-banner" role="status">
+      <span><Check :size="17" />{{ $t('pwa.updateAvailable') }}</span>
+      <button type="button" @click="performUpdate">{{ $t('actions.update') }}</button>
+    </div>
+
+    <main class="workspace">
+      <aside class="panel setup-panel">
+        <header class="section-header">
+          <div>
+            <div class="eyebrow">SETUP / 01</div>
+            <h1>{{ $t('setup.title') }}</h1>
+            <p>{{ $t('setup.subtitle') }}</p>
+          </div>
+          <span class="mode-code">{{ settings.mode === 'song-battle-royale' ? 'BR' : 'GL' }}</span>
+        </header>
+
+        <template v-if="settings.mode === 'song-battle-royale'">
+          <div v-if="battle.phase !== 'setup'" class="locked-state">
+            <LockKeyhole :size="22" />
+            <div><strong>{{ $t('setup.editLocked') }}</strong><span>{{ battle.players.length }} {{ $t('setup.players') }} · {{ battle.questions.length }} {{ $t('setup.questions') }}</span></div>
+            <button class="button button-ghost" type="button" @click="battle.unlockSetup()">{{ $t('setup.unlock') }}</button>
+          </div>
+
+          <template v-else>
+            <section class="setup-section">
+              <div class="subsection-title"><h2>{{ $t('setup.players') }}</h2><span>{{ battle.players.length }}</span></div>
+              <div class="player-editors">
+                <div v-for="(player, index) in currentPlayers" :key="player.id" class="player-editor">
+                  <span class="order-index">{{ index + 1 }}</span>
+                  <div class="editor-main">
+                    <input v-model="player.name" type="text" :aria-label="$t('player.name')" :placeholder="$t('player.placeholder')" maxlength="40" />
+                    <small>{{ $t('player.questionCount', { count: playerQuestionCount(player.id) }) }}</small>
+                  </div>
+                  <div class="row-actions">
+                    <button type="button" :title="$t('actions.moveUp')" :aria-label="$t('actions.moveUp')" :disabled="index === 0" @click="battle.movePlayer(player.id, -1)"><ArrowUp :size="14" /></button>
+                    <button type="button" :title="$t('actions.moveDown')" :aria-label="$t('actions.moveDown')" :disabled="index === currentPlayers.length - 1" @click="battle.movePlayer(player.id, 1)"><ArrowDown :size="14" /></button>
+                    <button type="button" class="delete-action" :title="$t('actions.delete')" :aria-label="$t('actions.delete')" @click="requestDeletePlayer(player.id)"><Trash2 :size="14" /></button>
+                  </div>
+                </div>
+              </div>
+              <button id="add-player" class="add-row-button" type="button" @click="battle.addPlayer"><Plus :size="16" />{{ $t('actions.addPlayer') }}</button>
+            </section>
+
+            <section class="setup-section">
+              <div class="subsection-title"><h2>{{ $t('setup.questions') }}</h2><span>{{ battle.questions.length }}</span></div>
+              <div class="question-editors">
+                <div v-for="(question, index) in battle.questions" :key="question.id" class="question-editor">
+                  <div class="question-editor-head"><strong>#{{ String(index + 1).padStart(2, '0') }}</strong><button type="button" :aria-label="$t('actions.delete')" :title="$t('actions.delete')" @click="battle.removeQuestion(question.id)"><Trash2 :size="14" /></button></div>
+                  <label><span>{{ $t('question.author') }}</span><select v-model="question.authorPlayerId"><option v-for="player in currentPlayers" :key="player.id" :value="player.id">{{ player.name || $t('player.placeholder') }}</option></select></label>
+                  <label><span>{{ $t('question.title') }}</span><input v-model="question.title" type="text" :placeholder="$t('question.titlePlaceholder')" maxlength="80" /></label>
+                  <label><span>{{ $t('question.answer') }}</span><input v-model="question.answer" type="text" :placeholder="$t('question.answerPlaceholder')" maxlength="100" @input="questionChanged(question)" /></label>
+                </div>
+              </div>
+              <button class="add-row-button" type="button" @click="addBattleQuestion"><Plus :size="16" />{{ $t('actions.addQuestion') }}</button>
+            </section>
+
+            <section class="setup-section rules-section">
+              <div class="subsection-title"><h2>{{ $t('setup.rules') }}</h2><span>id + v1</span></div>
+              <label class="toggle-row"><input v-model="battle.rulesetConfig.allowSelfTarget" type="checkbox" /><span>{{ $t('rules.allowSelf') }}</span></label>
+              <label class="toggle-row"><input v-model="battle.rulesetConfig.consumeTurnOnMiss" type="checkbox" /><span>{{ $t('rules.consumeMiss') }}</span></label>
+              <label class="toggle-row"><input v-model="battle.rulesetConfig.autoWinner" type="checkbox" /><span>{{ $t('rules.autoWinner') }}</span></label>
+              <label class="field-label"><span>{{ $t('game.letter') }}</span><select v-model="battle.rulesetConfig.letterScope"><option value="all">{{ $t('rules.globalLetters') }}</option><option value="target">{{ $t('rules.targetLetters') }}</option></select></label>
+              <p class="rules-note">{{ $t('rules.localConfig') }}</p>
+            </section>
+          </template>
+        </template>
+
+        <template v-else>
+          <section class="setup-section plain-setup">
+            <div class="subsection-title"><h2>{{ $t('setup.questions') }}</h2><span>{{ plain.questions.length }}</span></div>
+            <div class="question-editors">
+              <div v-for="(question, index) in plain.questions" :key="question.id" class="question-editor">
+                <div class="question-editor-head"><strong>#{{ String(index + 1).padStart(2, '0') }}</strong><button type="button" :aria-label="$t('actions.delete')" :title="$t('actions.delete')" @click="plain.removeQuestion(question.id)"><Trash2 :size="14" /></button></div>
+                <label><span>{{ $t('question.title') }}</span><input v-model="question.title" type="text" :placeholder="$t('question.titlePlaceholder')" maxlength="80" /></label>
+                <label><span>{{ $t('question.answer') }}</span><input v-model="question.answer" type="text" :placeholder="$t('question.answerPlaceholder')" maxlength="100" @input="questionChanged(question)" /></label>
+              </div>
+            </div>
+            <button id="add-question" class="add-row-button" type="button" @click="plain.addQuestion"><Plus :size="16" />{{ $t('actions.addQuestion') }}</button>
+          </section>
+        </template>
+      </aside>
+
+      <div class="main-column">
+        <section class="stage-panel">
+          <div class="stage-copy">
+            <div class="eyebrow">PLAY / 02</div>
+            <h2>{{ $t('game.title') }}</h2>
+            <p v-if="settings.mode === 'give-your-letters'">{{ allPlainSolved ? $t('game.allComplete') : $t('game.plainIntro') }}</p>
+            <p v-else-if="battle.phase === 'playing'">{{ $t('game.currentTurn') }} <strong>{{ currentActor?.name }}</strong></p>
+            <p v-else-if="battle.phase === 'finished'">{{ $t('game.finished') }}</p>
+            <p v-else>{{ $t('game.waiting') }}</p>
+          </div>
+          <button v-if="settings.mode === 'song-battle-royale' && battle.phase === 'setup'" class="start-button" type="button" @click="startGame"><Play :size="19" fill="currentColor" />{{ $t('game.start') }}</button>
+          <div v-else-if="settings.mode === 'song-battle-royale'" class="current-actor-badge">
+            <span>{{ battle.phase === 'finished' ? 'END' : 'TURN' }}</span><strong>{{ currentActor?.name || $t('game.finished') }}</strong>
+          </div>
+          <div v-else class="current-actor-badge plain"><span>SHARED</span><strong>{{ plain.guessedLetters.length }}</strong></div>
+        </section>
+
+        <div v-if="settings.mode === 'song-battle-royale'" class="standings-strip" aria-label="Player standings">
+          <div v-for="(player, index) in currentPlayers" :key="player.id" :class="[`standing-${outcomeMap.get(player.id) || 'active'}`, { current: player.id === battle.currentActorId }]">
+            <span>{{ index + 1 }}</span><strong>{{ player.name || '—' }}</strong><small>{{ $t(`player.status.${outcomeMap.get(player.id) || 'active'}`) }}</small>
+          </div>
+        </div>
+
+        <section class="guess-console panel" :class="{ disabled: settings.mode === 'song-battle-royale' && battle.phase !== 'playing' }">
+          <div class="guess-tabs" role="tablist">
+            <button type="button" :class="{ active: guessType === 'guess-letter' }" @click="guessType = 'guess-letter'"><Type :size="16" />{{ $t('game.letter') }}</button>
+            <button type="button" :class="{ active: guessType === 'guess-answer' }" @click="guessType = 'guess-answer'"><BookOpen :size="16" />{{ $t('game.answer') }}</button>
+          </div>
+          <div class="guess-form">
+            <label v-if="needsTarget" class="guess-target"><span>{{ $t('game.target') }}</span><select v-model="targetQuestionId"><option v-for="question in selectableQuestions" :key="question.id" :value="question.id">{{ question.title || $t('question.titlePlaceholder') }}</option></select></label>
+            <label class="guess-input-wrap"><span>{{ guessType === 'guess-letter' ? $t('game.letter') : $t('game.answer') }}</span><input id="guess-input" v-model="guessValue" type="text" :placeholder="guessType === 'guess-letter' ? $t('game.inputLetter') : $t('game.inputAnswer')" autocomplete="off" @keydown.enter.prevent="submitGuess" /></label>
+            <button class="submit-action" type="button" :disabled="!canSubmit" @click="submitGuess">{{ $t('game.submit') }}<ArrowUp :size="18" /></button>
+          </div>
+        </section>
+
+        <div class="macro-bar" aria-label="Game actions">
+          <button type="button" aria-keyshortcuts="Control+Shift+G" @click="randomizeOrder"><Shuffle :size="16" />{{ $t(settings.mode === 'song-battle-royale' ? 'actions.randomPlayers' : 'actions.randomQuestions') }}<kbd>G</kbd></button>
+          <button type="button" aria-keyshortcuts="Control+Shift+R" @click="restoreOrder"><RotateCcw :size="16" />{{ $t(settings.mode === 'song-battle-royale' ? 'actions.restorePlayers' : 'actions.restoreQuestions') }}<kbd>R</kbd></button>
+          <button type="button" aria-keyshortcuts="Control+Shift+F" @click="copyImage"><Image :size="16" />{{ $t('actions.copyImage') }}<kbd>F</kbd></button>
+          <button class="danger" type="button" aria-keyshortcuts="Control+Shift+C" @click="requestReset"><Trash2 :size="16" />{{ $t('actions.reset') }}<kbd>C</kbd></button>
+        </div>
+
+        <QuestionBoard
+          :questions="currentQuestions"
+          :players="currentPlayers"
+          :actions="currentActions"
+          :guesses-by-question="guessesByQuestion"
+          :distinguish-types="settings.distinguishCharacterTypes"
+          :visible-categories="settings.visibleCategories"
+          @cycle-control="cycleControl"
+          @bulk-control="bulkControl"
+          @toggle-solved="toggleSolved"
+        />
+
+        <div class="lower-grid">
+          <section class="panel legend-panel">
+            <header class="section-header compact"><div><div class="eyebrow">COLOR KEY</div><h2>{{ $t('category.title') }}</h2></div><label class="switch"><input v-model="settings.distinguishCharacterTypes" type="checkbox" /><span></span></label></header>
+            <div class="legend-grid">
+              <button v-for="category in CATEGORY_KEYS" :key="category" type="button" :class="[`legend-${category}`, { muted: !settings.visibleCategories[category] }]" :aria-pressed="settings.visibleCategories[category]" @click="settings.visibleCategories[category] = !settings.visibleCategories[category]">
+                <span></span>{{ $t(`category.${category}`) }}
+              </button>
+            </div>
+          </section>
+          <ActionHistory :actions="currentActions" :players="currentPlayers" />
+        </div>
+
+        <footer class="privacy-footer"><span><Save :size="14" />{{ $t('toolbar.local') }}</span><span>Caige MVP · schema v1 · ruleset standard-v1</span></footer>
+      </div>
+    </main>
+
+    <input ref="fileInput" class="sr-only" type="file" accept="application/json,.json" @change="importState" />
+
+    <AppModal :open="helpOpen" :title="$t('help.title')" @close="helpOpen = false">
+      <div class="help-content">
+        <p class="help-intro">{{ $t('help.intro') }}</p>
+        <div class="help-steps">
+          <section><span>01</span><div><h3>{{ $t('help.step1Title') }}</h3><p>{{ $t('help.step1') }}</p></div></section>
+          <section><span>02</span><div><h3>{{ $t('help.step2Title') }}</h3><p>{{ $t('help.step2') }}</p></div></section>
+          <section><span>03</span><div><h3>{{ $t('help.step3Title') }}</h3><p>{{ $t('help.step3') }}</p></div></section>
+        </div>
+        <h3>{{ $t('help.shortcuts') }}</h3>
+        <div class="shortcut-grid"><span><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>G</kbd>{{ $t('help.keyG') }}</span><span><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>R</kbd>{{ $t('help.keyR') }}</span><span><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>C</kbd>{{ $t('help.keyC') }}</span><span><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>F</kbd>{{ $t('help.keyF') }}</span></div>
+        <p class="privacy-warning"><LockKeyhole :size="18" />{{ $t('help.privacy') }}</p>
+      </div>
+    </AppModal>
+
+    <AppModal :open="Boolean(confirmState)" :title="confirmTitle" :description="confirmDescription" :confirm-label="$t('actions.confirm')" :danger="confirmState?.kind !== 'import'" @close="confirmState = null" @confirm="executeConfirm" />
+
+    <Transition name="toast"><div v-if="toastMessage" class="toast" role="status"><Check :size="17" />{{ toastMessage }}</div></Transition>
+  </div>
+</template>

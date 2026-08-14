@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.vite/
+.wrangler/
+*.local
+coverage/
+_handoff/
+_ref/
+_work/
+docs/
