@@ -9,7 +9,7 @@ import type {
   StandardRulesetConfig,
 } from '../game'
 import { answerContainsGuess, isSingleCharacter, normalizeCharacter, toCodePoints } from '../normalize'
-import { answerMatches, getQuestionStatus, guessedForQuestion } from '../reveal'
+import { getQuestionStatus, guessedForQuestion } from '../reveal'
 
 function questionGuesses(state: BattleRoyaleState, questionId: string): string[] {
   return guessedForQuestion(state.actionHistory, questionId)
@@ -20,6 +20,7 @@ function cloneState(state: BattleRoyaleState): BattleRoyaleState {
     ...state,
     players: state.players.map((player) => ({ ...player })),
     questions: state.questions.map((question) => ({ ...question, characterControls: [...question.characterControls] })),
+    questionOrder: [...state.questionOrder],
     turnOrder: [...state.turnOrder],
     actionHistory: state.actionHistory.map((action) => ({ ...action })),
     rulesetConfig: { ...state.rulesetConfig },
@@ -80,9 +81,8 @@ export const standardRuleset: GameRuleset<StandardRulesetConfig> = {
         : next.questions.filter((question) => this.canTargetQuestion(next, action.actorPlayerId, question.id, action, config))
       const hit = targets.some((question) => answerContainsGuess(question.answer, action.value))
       result = hit ? 'hit' : 'miss'
-    } else if (action.questionId && this.canTargetQuestion(next, action.actorPlayerId, action.questionId, action, config)) {
-      const question = next.questions.find((item) => item.id === action.questionId)
-      result = question && answerMatches(question, action.value) ? 'solved' : 'miss'
+    } else if (action.questionId && action.hostJudgement && this.canTargetQuestion(next, action.actorPlayerId, action.questionId, action, config)) {
+      result = action.hostJudgement === 'correct' ? 'solved' : 'miss'
     }
 
     const consumedTurn = result === 'hit' || result === 'solved' || (result === 'miss' && config.consumeTurnOnMiss)

@@ -1,19 +1,16 @@
 import { CHARACTER_ALIAS_GROUPS } from '../data/character-aliases'
 
-const aliasLookup = new Map<string, string>()
+const aliasGroupsByKey = new Map<string, ReadonlySet<string>>()
 for (const [key, aliases] of CHARACTER_ALIAS_GROUPS) {
-  const canonical = key.toLocaleLowerCase('en-US').normalize('NFC')
-  for (const character of Array.from(`${key}${aliases}`.normalize('NFC'))) {
-    aliasLookup.set(character.toLocaleLowerCase('en-US'), canonical)
-  }
+  const lookupKey = key.toLocaleLowerCase('en-US').normalize('NFC')
+  aliasGroupsByKey.set(lookupKey, new Set(Array.from(`${key}${aliases}`.normalize('NFC'))))
 }
 
 export const toCodePoints = (value: string): string[] => Array.from(value.normalize('NFC'))
 
 export function normalizeCharacter(value: string): string {
   const normalized = toCodePoints(value.trim())[0] ?? ''
-  const folded = normalized.toLocaleLowerCase('en-US')
-  return aliasLookup.get(folded) ?? folded
+  return /^[A-Z]$/u.test(normalized) ? normalized.toLowerCase() : normalized
 }
 
 export function normalizeAnswer(value: string): string {
@@ -25,9 +22,19 @@ export function normalizeAnswer(value: string): string {
 
 export const isSingleCharacter = (value: string): boolean => toCodePoints(value.trim()).length === 1
 
+export function expandGuessCharacter(value: string): ReadonlySet<string> {
+  const character = toCodePoints(value.trim())[0] ?? ''
+  if (!character) return new Set()
+  const aliases = aliasGroupsByKey.get(character.toLocaleLowerCase('en-US'))
+  return aliases ? new Set([character, ...aliases]) : new Set([character])
+}
+
+export function guessRevealsCharacter(character: string, guess: string): boolean {
+  return expandGuessCharacter(guess).has(character.normalize('NFC'))
+}
+
 export function answerContainsGuess(answer: string, guess: string): boolean {
-  const needle = normalizeCharacter(guess)
-  return toCodePoints(answer).some((character) => normalizeCharacter(character) === needle)
+  return toCodePoints(answer).some((character) => guessRevealsCharacter(character, guess))
 }
 
 export const aliasGroupCount = CHARACTER_ALIAS_GROUPS.length

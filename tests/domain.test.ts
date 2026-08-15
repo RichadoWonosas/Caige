@@ -1,14 +1,15 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { BattleRoyaleState, Question, StandardRulesetConfig } from '../src/domain/game'
-import { aliasGroupCount, normalizeAnswer, normalizeCharacter } from '../src/domain/normalize'
+import { aliasGroupCount, answerContainsGuess, normalizeAnswer, normalizeCharacter } from '../src/domain/normalize'
 import { classifyCharacter } from '../src/domain/classify'
 import { getQuestionStatus, revealQuestion } from '../src/domain/reveal'
+import { sortedLetterGuesses } from '../src/domain/guess-history'
 import { standardRuleset } from '../src/domain/rulesets/standard-v1'
 import { byCreatedAt, shuffled } from '../src/domain/order'
 import { messages } from '../src/i18n'
 
 const question = (id: string, authorPlayerId: string, answer: string): Question => ({
-  id, authorPlayerId, title: id, answer, hostStatusOverride: 'auto', characterControls: [], createdAt: `2026-01-0${id.length}T00:00:00.000Z`,
+  id, authorPlayerId, title: id, answer, characterControls: [], createdAt: `2026-01-0${id.length}T00:00:00.000Z`,
 })
 
 const config: StandardRulesetConfig = { allowSelfTarget: false, letterScope: 'all', consumeTurnOnMiss: true, autoWinner: true }
@@ -19,9 +20,9 @@ function battleState(): BattleRoyaleState {
       { id: 'p1', name: 'Alpha', createdAt: '2026-01-01T00:00:00.000Z' },
       { id: 'p2', name: 'Beta', createdAt: '2026-01-02T00:00:00.000Z' },
     ],
-    questions: [question('q1', 'p1', 'Moon'), question('q2', 'p1', 'Star'), question('q3', 'p2', 'Rain')],
+    questions: [question('q1', 'p1', 'Moon'), question('q2', 'p1', 'Star'), question('q3', 'p2', 'Rain')], questionOrder: ['q1', 'q2', 'q3'],
     turnOrder: ['p1', 'p2'], currentActorId: 'p2', actionHistory: [], phase: 'playing',
-    rulesetId: 'standard-v1', rulesetVersion: 1, rulesetConfig: { ...config },
+    rulesetId: 'standard-v1', rulesetVersion: 1, rulesetConfig: { ...config }, sessionRules: '',
   }
 }
 
@@ -31,11 +32,15 @@ function flatten(value: unknown, prefix = ''): string[] {
 }
 
 describe('workbook-compatible character engine', () => {
-  it('loads all 106 alias groups and performs representative matching', () => {
+  it('loads all 106 alias groups and preserves the workbook one-way expansion', () => {
     expect(aliasGroupCount).toBe(106)
-    expect(normalizeCharacter('Á')).toBe('a')
-    expect(normalizeCharacter('Α')).toBe('a')
-    expect(normalizeAnswer('Α Moon')).toBe(normalizeAnswer('a moon'))
+    expect(normalizeCharacter('A')).toBe('a')
+    expect(normalizeCharacter('Á')).toBe('Á')
+    expect(answerContainsGuess('Á', 'a')).toBe(true)
+    expect(answerContainsGuess('a', 'Á')).toBe(false)
+    expect(answerContainsGuess('Γ', 'c')).toBe(true)
+    expect(answerContainsGuess('Γ', 'g')).toBe(true)
+    expect(normalizeAnswer('A Moon')).toBe(normalizeAnswer('a moon'))
   })
 
   it('classifies range boundaries from the workbook', () => {
@@ -52,8 +57,8 @@ describe('workbook-compatible character engine', () => {
     item.characterControls = ['hide', 'show']
     expect(getQuestionStatus(item, ['A'], [])).toBe('active')
     expect(revealQuestion(item, ['A'], [])).toEqual([
-      { character: 'A', revealed: false },
-      { character: 'B', revealed: true },
+      { character: 'A', revealed: false, guessed: true },
+      { character: 'B', revealed: true, guessed: false },
     ])
   })
 })
@@ -80,6 +85,16 @@ describe('standard-v1 ruleset', () => {
     expect(applied.state.actionHistory).toHaveLength(1)
   })
 
+  it('uses the host judgement for full-song guesses without recording response text', () => {
+    const state = battleState()
+    const applied = standardRuleset.applyAction(state, {
+      id: 'a1', type: 'guess-answer', actorPlayerId: 'p2', questionId: 'q1', value: '', hostJudgement: 'correct', createdAt: '2026-01-01T00:00:00Z',
+    }, config)
+    expect(applied.result).toBe('solved')
+    expect(applied.state.actionHistory[0].hostJudgement).toBe('correct')
+    expect(applied.state.actionHistory[0].value).toBe('')
+  })
+
   it('rejects setup without one question per named player', () => {
     const state = battleState()
     state.questions = state.questions.filter((item) => item.authorPlayerId !== 'p2')
@@ -88,6 +103,16 @@ describe('standard-v1 ruleset', () => {
 })
 
 describe('dynamic ordering and localization', () => {
+  it('sorts the host ledger as A-Z, 0-9, then Unicode while keeping chronology separate', () => {
+    const actions = [
+      { id: '1', type: 'guess-letter' as const, value: 'あ', result: 'miss' as const, createdAt: '' },
+      { id: '2', type: 'guess-letter' as const, value: '9', result: 'hit' as const, createdAt: '' },
+      { id: '3', type: 'guess-letter' as const, value: 'b', result: 'hit' as const, createdAt: '' },
+      { id: '4', type: 'guess-letter' as const, value: 'A', result: 'hit' as const, createdAt: '' },
+    ]
+    expect(sortedLetterGuesses(actions)).toEqual(['A', 'B', '9', 'あ'])
+    expect(actions.map((action) => action.value)).toEqual(['あ', '9', 'b', 'A'])
+  })
   it('shuffles without losing or duplicating stable ids', () => {
     vi.spyOn(Math, 'random').mockReturnValueOnce(0.1).mockReturnValueOnce(0.7).mockReturnValueOnce(0.2)
     const source = ['a', 'b', 'c', 'd']

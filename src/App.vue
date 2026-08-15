@@ -3,9 +3,9 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRegisterSW } from 'virtual:pwa-register/vue'
 import {
-  ArrowDown, ArrowUp, BookOpen, Check, CircleHelp, Copy, Dices, Download,
-  Image, Languages, LockKeyhole, Play, Plus, RotateCcw, Save, Settings2,
-  Shuffle, Swords, Trash2, Type, Upload,
+  ArrowDown, ArrowUp, BookOpen, Check, CircleHelp, Download,
+  Image, Languages, LockKeyhole, MonitorDown, Play, Plus, RotateCcw, Save, Settings2,
+  Shuffle, Swords, Trash2, Type, Undo2, Upload,
 } from 'lucide-vue-next'
 import AppModal from './components/AppModal.vue'
 import QuestionBoard from './components/QuestionBoard.vue'
@@ -13,12 +13,21 @@ import ActionHistory from './components/ActionHistory.vue'
 import { useSettingsStore } from './stores/settings'
 import { usePlainStore } from './stores/plain'
 import { useBattleStore } from './stores/battle'
-import type { CharacterControl, GameAction, GameState, Locale, Question, ThemePreference } from './domain/game'
+import type { BattleRoyaleState, CharacterControl, GameAction, GameState, Locale, PlainLettersState, Question, ThemePreference } from './domain/game'
 import { CATEGORY_KEYS } from './domain/game'
 import { guessedForQuestion, getQuestionStatus, revealQuestion } from './domain/reveal'
+import { sortedLetterGuesses } from './domain/guess-history'
 import { standardRuleset } from './domain/rulesets/standard-v1'
 import { copyBoardImage } from './features/screenshot/render'
 import { loadGameState, saveGameState, validateImportedState } from './persistence/indexed-db'
+import compassHandUrl from './assets/theme/compass-hand.svg?url'
+import compassDialLightUrl from './assets/theme/compass-dial-light.svg?url'
+import compassDialDarkUrl from './assets/theme/compass-dial-dark.svg?url'
+
+interface InstallPromptEvent extends Event {
+  prompt(): Promise<void>
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>
+}
 
 const settings = useSettingsStore()
 const plain = usePlainStore()
@@ -26,6 +35,7 @@ const battle = useBattleStore()
 const { t, locale } = useI18n()
 
 const helpOpen = ref(false)
+const themeSettingsOpen = ref(false)
 const toastMessage = ref('')
 const hydrated = ref(false)
 const saveStatus = ref<'saved' | 'saving'>('saved')
@@ -34,18 +44,40 @@ const guessValue = ref('')
 const targetQuestionId = ref('')
 const fileInput = ref<HTMLInputElement | null>(null)
 const pendingImport = ref<GameState | null>(null)
-const confirmState = ref<{ kind: 'reset' | 'delete-player' | 'import'; playerId?: string } | null>(null)
+const confirmState = ref<{ kind: 'reset' | 'delete-player' | 'import' | 'undo'; playerId?: string } | null>(null)
+const clearSessionRulesOnReset = ref(false)
+const battleUndoStack = ref<BattleRoyaleState[]>([])
+const plainUndoStack = ref<PlainLettersState[]>([])
 const isDark = ref(false)
+const hueDragging = ref(false)
+const installPrompt = ref<InstallPromptEvent | null>(null)
+const isStandalone = ref(false)
 let toastTimer: ReturnType<typeof setTimeout> | undefined
 let saveTimer: ReturnType<typeof setTimeout> | undefined
 let themeMedia: MediaQueryList | undefined
 
-const currentQuestions = computed(() => settings.mode === 'song-battle-royale' ? battle.questions : plain.questions)
+const currentQuestions = computed(() => settings.mode === 'song-battle-royale' ? battle.orderedQuestions : plain.orderedQuestions)
 const currentPlayers = computed(() => settings.mode === 'song-battle-royale'
   ? battle.turnOrder.map((id) => battle.players.find((player) => player.id === id)).filter((player): player is NonNullable<typeof player> => Boolean(player))
   : [])
 const currentActions = computed(() => settings.mode === 'song-battle-royale' ? battle.actionHistory : plain.actionHistory)
+const currentSortedGuesses = computed(() => sortedLetterGuesses(currentActions.value))
 const currentActor = computed(() => battle.players.find((player) => player.id === battle.currentActorId))
+const currentSessionRules = computed({
+  get: () => settings.mode === 'song-battle-royale' ? battle.sessionRules : plain.sessionRules,
+  set: (value: string) => {
+    if (settings.mode === 'song-battle-royale') battle.sessionRules = value
+    else plain.sessionRules = value
+  },
+})
+const accentHue = computed({
+  get: () => settings.accentHue,
+  set: (value: number) => settings.setAccentHue(value),
+})
+const currentThemeLabel = computed(() => t(`theme.${settings.theme}`))
+const themeOptions: ThemePreference[] = ['system', 'light', 'dark']
+const huePresets = [0, 16, 45, 90, 160, 210, 255, 315]
+const undoAvailable = computed(() => settings.mode === 'song-battle-royale' ? battleUndoStack.value.length > 0 : plainUndoStack.value.length > 0)
 const outcomeMap = computed(() => new Map(battle.outcomes.map((outcome) => [outcome.playerId, outcome.status])))
 const allPlainSolved = computed(() => plain.questions.length > 0 && plain.questions.every((question) =>
   getQuestionStatus(question, plain.guessedLetters, plain.actionHistory) === 'solved',
@@ -57,8 +89,8 @@ const guessesByQuestion = computed<Record<string, string[]>>(() => Object.fromEn
 ])))
 
 const eligibleBattleQuestions = computed(() => {
-  if (!battle.currentActorId) return battle.questions
-  return battle.questions.filter((question) => standardRuleset.canTargetQuestion(
+  if (!battle.currentActorId) return currentQuestions.value
+  return currentQuestions.value.filter((question) => standardRuleset.canTargetQuestion(
     battle.$state,
     battle.currentActorId!,
     question.id,
@@ -67,22 +99,26 @@ const eligibleBattleQuestions = computed(() => {
   ))
 })
 
-const selectableQuestions = computed(() => settings.mode === 'song-battle-royale' ? eligibleBattleQuestions.value : plain.questions)
+const selectableQuestions = computed(() => settings.mode === 'song-battle-royale'
+  ? eligibleBattleQuestions.value
+  : currentQuestions.value.filter((question) => getQuestionStatus(question, plain.guessedLetters, plain.actionHistory) === 'active'))
 const needsTarget = computed(() => guessType.value === 'guess-answer' || (settings.mode === 'song-battle-royale' && battle.rulesetConfig.letterScope === 'target'))
 const canSubmit = computed(() => {
-  if (!guessValue.value.trim()) return false
   if (settings.mode === 'song-battle-royale' && battle.phase !== 'playing') return false
+  if (guessType.value === 'guess-letter' && !guessValue.value.trim()) return false
   return !needsTarget.value || Boolean(targetQuestionId.value)
 })
 
 const confirmTitle = computed(() => {
   if (confirmState.value?.kind === 'delete-player') return t('dialog.deletePlayerTitle')
   if (confirmState.value?.kind === 'import') return t('dialog.importTitle')
+  if (confirmState.value?.kind === 'undo') return t('dialog.undoTitle')
   return t('dialog.resetTitle')
 })
 const confirmDescription = computed(() => {
   if (confirmState.value?.kind === 'delete-player') return t('dialog.deletePlayerBody')
   if (confirmState.value?.kind === 'import') return t('dialog.importBody')
+  if (confirmState.value?.kind === 'undo') return t('dialog.undoBody')
   return t('dialog.resetBody')
 })
 
@@ -92,6 +128,36 @@ function showToast(message: string) {
   toastMessage.value = message
   clearTimeout(toastTimer)
   toastTimer = setTimeout(() => { toastMessage.value = '' }, 3200)
+}
+
+function cloneState<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T
+}
+
+function checkpointUndo() {
+  if (settings.mode === 'song-battle-royale') {
+    battleUndoStack.value.push(cloneState(battle.$state))
+    if (battleUndoStack.value.length > 50) battleUndoStack.value.shift()
+  } else {
+    plainUndoStack.value.push(cloneState(plain.$state))
+    if (plainUndoStack.value.length > 50) plainUndoStack.value.shift()
+  }
+}
+
+function discardUndoCheckpoint() {
+  const stack = settings.mode === 'song-battle-royale' ? battleUndoStack.value : plainUndoStack.value
+  stack.pop()
+}
+
+function undoLastOperation() {
+  if (settings.mode === 'song-battle-royale') {
+    const snapshot = battleUndoStack.value.pop()
+    if (snapshot) battle.$patch(cloneState(snapshot))
+  } else {
+    const snapshot = plainUndoStack.value.pop()
+    if (snapshot) plain.$patch(cloneState(snapshot))
+  }
+  showToast(t('toast.undone'))
 }
 
 function stateSnapshot(): GameState {
@@ -110,8 +176,18 @@ function applyState(state: GameState) {
   settings.mode = state.mode
   settings.distinguishCharacterTypes = state.distinguishCharacterTypes
   settings.visibleCategories = { ...state.visibleCategories }
-  plain.$patch(state.plain)
-  battle.$patch(state.battleRoyale)
+  plain.$patch({
+    ...state.plain,
+    questionOrder: Array.isArray(state.plain.questionOrder) ? state.plain.questionOrder : state.plain.questions.map((question) => question.id),
+    sessionRules: state.plain.sessionRules ?? '',
+  })
+  battle.$patch({
+    ...state.battleRoyale,
+    questionOrder: Array.isArray(state.battleRoyale.questionOrder) ? state.battleRoyale.questionOrder : state.battleRoyale.questions.map((question) => question.id),
+    sessionRules: state.battleRoyale.sessionRules ?? '',
+  })
+  battleUndoStack.value = []
+  plainUndoStack.value = []
 }
 
 function applyTheme() {
@@ -119,10 +195,70 @@ function applyTheme() {
   isDark.value = dark
   document.documentElement.classList.toggle('dark', dark)
   document.documentElement.style.colorScheme = dark ? 'dark' : 'light'
+  document.documentElement.style.setProperty('--theme-hue', String(settings.accentHue))
+  const accentNeedsDarkInk = dark || (settings.accentHue >= 35 && settings.accentHue <= 195)
+  document.documentElement.style.setProperty('--accent-ink', accentNeedsDarkInk ? '222 47% 8%' : '0 0% 100%')
+  const metaThemeColor = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')
+  metaThemeColor?.setAttribute('content', `hsl(${settings.accentHue} ${dark ? '48% 13%' : '74% 42%'})`)
 }
 
-function onThemeChange(event: Event) {
-  settings.setTheme((event.target as HTMLSelectElement).value as ThemePreference)
+function adjustHue(delta: number) {
+  settings.setAccentHue(settings.accentHue + delta)
+}
+
+function setHueFromPointer(event: PointerEvent) {
+  const target = event.currentTarget as HTMLElement
+  const rect = target.getBoundingClientRect()
+  const x = event.clientX - (rect.left + rect.width / 2)
+  const y = event.clientY - (rect.top + rect.height / 2)
+  settings.setAccentHue(Math.atan2(y, x) * 180 / Math.PI + 90)
+}
+
+function startHueDrag(event: PointerEvent) {
+  hueDragging.value = true
+  ;(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId)
+  setHueFromPointer(event)
+}
+
+function moveHueDrag(event: PointerEvent) {
+  if (hueDragging.value) setHueFromPointer(event)
+}
+
+function stopHueDrag() {
+  hueDragging.value = false
+}
+
+function onHueKeydown(event: KeyboardEvent) {
+  const delta = event.shiftKey ? 15 : 1
+  if (event.key === 'ArrowLeft' || event.key === 'ArrowDown') adjustHue(-delta)
+  else if (event.key === 'ArrowRight' || event.key === 'ArrowUp') adjustHue(delta)
+  else if (event.key === 'Home') settings.setAccentHue(0)
+  else if (event.key === 'End') settings.setAccentHue(359)
+  else return
+  event.preventDefault()
+}
+
+function onBeforeInstallPrompt(event: Event) {
+  event.preventDefault()
+  installPrompt.value = event as InstallPromptEvent
+}
+
+function onAppInstalled() {
+  installPrompt.value = null
+  isStandalone.value = true
+  showToast(t('pwa.installed'))
+}
+
+async function installApp() {
+  if (!installPrompt.value) {
+    showToast(t(import.meta.env.DEV ? 'pwa.installPreparing' : 'pwa.installUnavailable'))
+    return
+  }
+  const promptEvent = installPrompt.value
+  await promptEvent.prompt()
+  const choice = await promptEvent.userChoice
+  installPrompt.value = null
+  if (choice.outcome === 'dismissed') showToast(t('pwa.installDismissed'))
 }
 
 function onLocaleChange(event: Event) {
@@ -156,8 +292,10 @@ function playerQuestionCount(playerId: string) {
 }
 
 function startGame() {
+  checkpointUndo()
   const violations = battle.startGame()
   if (violations.length) {
+    discardUndoCheckpoint()
     showToast(t(`errors.${violations[0].code}`))
     return
   }
@@ -170,65 +308,70 @@ function submitGuess() {
     showToast(t('toast.invalid'))
     return
   }
+  checkpointUndo()
   let result: 'hit' | 'miss' | 'invalid' | 'solved'
-  if (settings.mode === 'give-your-letters') {
-    result = guessType.value === 'guess-letter'
-      ? plain.submitLetter(guessValue.value)
-      : plain.submitAnswer(targetQuestionId.value, guessValue.value)
-  } else {
-    const applied = battle.submitAction({
-      type: guessType.value,
-      questionId: needsTarget.value ? targetQuestionId.value : undefined,
-      value: guessValue.value,
-    })
-    result = applied.result
-  }
+  if (settings.mode === 'give-your-letters') result = plain.submitLetter(guessValue.value)
+  else result = battle.submitAction({ type: 'guess-letter', questionId: needsTarget.value ? targetQuestionId.value : undefined, value: guessValue.value }).result
+  if (result === 'invalid') discardUndoCheckpoint()
   showToast(t(`toast.${result}`))
   if (result !== 'invalid') guessValue.value = ''
+}
+
+function resolveAnswer(correct: boolean) {
+  if (!canSubmit.value || !targetQuestionId.value) {
+    showToast(t('toast.invalidTarget'))
+    return
+  }
+  checkpointUndo()
+  const result = settings.mode === 'give-your-letters'
+    ? plain.submitAnswer(targetQuestionId.value, correct)
+    : battle.submitAction({ type: 'guess-answer', questionId: targetQuestionId.value, value: '', hostJudgement: correct ? 'correct' : 'incorrect' }).result
+  if (result === 'invalid') discardUndoCheckpoint()
+  showToast(t(`toast.${result}`))
 }
 
 function cycleControl(questionId: string, index: number) {
   const question = currentQuestions.value.find((item) => item.id === questionId)
   if (!question) return
+  checkpointUndo()
   questionChanged(question)
   const order: CharacterControl[] = ['auto', 'show', 'hide']
   question.characterControls[index] = order[(order.indexOf(question.characterControls[index] ?? 'auto') + 1) % order.length]
 }
 
-function bulkControl(questionId: string, control: CharacterControl) {
-  const question = currentQuestions.value.find((item) => item.id === questionId)
-  if (!question) return
-  questionChanged(question)
-  question.characterControls = question.characterControls.map(() => control)
-}
-
-function toggleSolved(questionId: string) {
-  const question = currentQuestions.value.find((item) => item.id === questionId)
-  if (question) question.hostStatusOverride = question.hostStatusOverride === 'solved' ? 'auto' : 'solved'
-}
-
 function randomizeOrder() {
-  if (settings.mode === 'song-battle-royale') battle.randomizePlayers()
+  checkpointUndo()
+  if (settings.mode === 'song-battle-royale') battle.randomizeQuestions()
   else plain.randomizeQuestions()
   showToast(t('toast.shuffled'))
 }
 
 function restoreOrder() {
-  if (settings.mode === 'song-battle-royale') battle.restorePlayers()
+  checkpointUndo()
+  if (settings.mode === 'song-battle-royale') battle.restoreQuestions()
   else plain.restoreQuestions()
   showToast(t('toast.restoredOrder'))
 }
 
-function requestReset() { confirmState.value = { kind: 'reset' } }
+function requestReset() {
+  clearSessionRulesOnReset.value = false
+  confirmState.value = { kind: 'reset' }
+}
+function requestUndo() { if (undoAvailable.value) confirmState.value = { kind: 'undo' } }
 function requestDeletePlayer(playerId: string) { confirmState.value = { kind: 'delete-player', playerId } }
 
 function executeConfirm() {
   const state = confirmState.value
   confirmState.value = null
-  if (state?.kind === 'delete-player' && state.playerId) battle.removePlayer(state.playerId)
+  if (state?.kind === 'delete-player' && state.playerId) {
+    checkpointUndo()
+    battle.removePlayer(state.playerId)
+  }
+  if (state?.kind === 'undo') undoLastOperation()
   if (state?.kind === 'reset') {
-    if (settings.mode === 'song-battle-royale') battle.resetGame()
-    else plain.resetGame()
+    checkpointUndo()
+    if (settings.mode === 'song-battle-royale') battle.resetGame(clearSessionRulesOnReset.value)
+    else plain.resetGame(clearSessionRulesOnReset.value)
     showToast(t('toast.reset'))
   }
   if (state?.kind === 'import' && pendingImport.value) {
@@ -277,15 +420,31 @@ async function copyImage() {
       title: `${t('brand.name')} · ${t(settings.mode === 'song-battle-royale' ? 'mode.battle' : 'mode.plain')}`,
       subtitle: new Intl.DateTimeFormat(settings.locale, { dateStyle: 'long', timeStyle: 'short' }).format(new Date()),
       theme: isDark.value ? 'dark' : 'light',
-      currentActor: currentActor.value ? `${t('game.currentTurn')} · ${currentActor.value.name}` : undefined,
-      players: currentPlayers.value.map((player) => ({ name: player.name || '—', status: t(`player.status.${outcomeMap.value.get(player.id) || 'active'}`) })),
-      questions: currentQuestions.value.map((question) => ({
-        title: question.title,
-        author: battle.players.find((player) => player.id === question.authorPlayerId)?.name,
-        status: t(`question.status.${getQuestionStatus(question, guessesByQuestion.value[question.id] ?? [], currentActions.value)}`),
-        display: revealQuestion(question, guessesByQuestion.value[question.id] ?? [], currentActions.value).map((item) => item.revealed ? item.character : '＿').join(''),
-      })),
-      history: currentActions.value.map(historyLine),
+      themeHue: settings.accentHue,
+      rules: currentSessionRules.value,
+      nextPlayer: settings.mode === 'song-battle-royale' && currentActor.value ? `${t('game.nextPlayer')} · ${currentActor.value.name}` : undefined,
+      guessedCharacters: currentSortedGuesses.value,
+      categories: CATEGORY_KEYS.map((key) => ({ key, label: t(`category.${key}`), enabled: settings.distinguishCharacterTypes && settings.visibleCategories[key] })),
+      labels: {
+        rules: t('screenshot.rules'),
+        categories: t('screenshot.categories'),
+        guesses: t('screenshot.guesses'),
+        guessOrder: t('screenshot.guessOrder'),
+        history: t('screenshot.history'),
+      },
+      questions: currentQuestions.value.map((question, index) => {
+        const status = getQuestionStatus(question, guessesByQuestion.value[question.id] ?? [], currentActions.value)
+        return {
+          number: index + 1,
+          answer: question.answer,
+          source: question.title,
+          author: settings.mode === 'song-battle-royale' ? battle.players.find((player) => player.id === question.authorPlayerId)?.name : undefined,
+          status,
+          statusLabel: t(`question.status.${status}`),
+          characters: revealQuestion(question, guessesByQuestion.value[question.id] ?? [], currentActions.value),
+        }
+      }),
+      history: currentActions.value.map(historyLine).join('  →  '),
     })
     showToast(t(result === 'copied' ? 'toast.copied' : 'toast.downloaded'))
   } catch { showToast(t('errors.generic')) }
@@ -310,6 +469,7 @@ function onKeydown(event: KeyboardEvent) {
 
 watch(() => settings.locale, (value) => { locale.value = value }, { immediate: true })
 watch(() => settings.theme, applyTheme)
+watch(() => settings.accentHue, applyTheme)
 watch([selectableQuestions, needsTarget], () => {
   if (!needsTarget.value) targetQuestionId.value = ''
   else if (!selectableQuestions.value.some((question) => question.id === targetQuestionId.value)) targetQuestionId.value = selectableQuestions.value[0]?.id ?? ''
@@ -337,7 +497,10 @@ watch(
 
 onMounted(async () => {
   themeMedia = window.matchMedia('(prefers-color-scheme: dark)')
+  isStandalone.value = window.matchMedia('(display-mode: standalone)').matches || Boolean((navigator as Navigator & { standalone?: boolean }).standalone)
   themeMedia.addEventListener('change', applyTheme)
+  window.addEventListener('beforeinstallprompt', onBeforeInstallPrompt)
+  window.addEventListener('appinstalled', onAppInstalled)
   applyTheme()
   window.addEventListener('keydown', onKeydown)
   try {
@@ -352,6 +515,8 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeydown)
+  window.removeEventListener('beforeinstallprompt', onBeforeInstallPrompt)
+  window.removeEventListener('appinstalled', onAppInstalled)
   themeMedia?.removeEventListener('change', applyTheme)
   clearTimeout(toastTimer)
   clearTimeout(saveTimer)
@@ -379,20 +544,18 @@ onBeforeUnmount(() => {
 
       <div class="topbar-actions">
         <span class="save-state"><Save :size="15" aria-hidden="true" />{{ $t(saveStatus === 'saved' ? 'toolbar.saved' : 'toolbar.saving') }}</span>
-        <label class="select-control" :title="$t('toolbar.theme')">
+        <button class="theme-settings-trigger" type="button" :title="$t('theme.settingsTitle')" :aria-label="$t('theme.settingsTitle')" @click="themeSettingsOpen = true">
           <Settings2 :size="16" aria-hidden="true" />
-          <select :value="settings.theme" :aria-label="$t('toolbar.theme')" @change="onThemeChange">
-            <option value="system">{{ $t('theme.system') }}</option>
-            <option value="light">{{ $t('theme.light') }}</option>
-            <option value="dark">{{ $t('theme.dark') }}</option>
-          </select>
-        </label>
+          <span class="theme-color-dot" :style="{ background: `hsl(${settings.accentHue} 86% 52%)` }"></span>
+          <span class="theme-trigger-label">{{ currentThemeLabel }}</span>
+        </button>
         <label class="select-control" :title="$t('toolbar.language')">
           <Languages :size="16" aria-hidden="true" />
           <select :value="settings.locale" :aria-label="$t('toolbar.language')" @change="onLocaleChange">
             <option value="zh-Hans">简体中文</option><option value="zh-Hant">繁體中文</option><option value="en-US">English</option><option value="ja-JP">日本語</option>
           </select>
         </label>
+        <button v-if="!isStandalone" class="icon-button install-button" :class="{ ready: Boolean(installPrompt) }" type="button" :title="$t(installPrompt ? 'pwa.installReady' : 'pwa.installWaiting')" :aria-label="$t('toolbar.install')" @click="installApp"><MonitorDown :size="18" /></button>
         <button class="icon-button" type="button" :title="$t('actions.export')" :aria-label="$t('actions.export')" @click="exportState"><Download :size="18" /></button>
         <button class="icon-button" type="button" :title="$t('actions.import')" :aria-label="$t('actions.import')" @click="fileInput?.click()"><Upload :size="18" /></button>
         <button class="icon-button" type="button" :title="$t('toolbar.help')" :aria-label="$t('toolbar.help')" @click="helpOpen = true"><CircleHelp :size="19" /></button>
@@ -408,12 +571,18 @@ onBeforeUnmount(() => {
       <aside class="panel setup-panel">
         <header class="section-header">
           <div>
-            <div class="eyebrow">SETUP / 01</div>
+            <div class="eyebrow">{{ $t('setup.eyebrow') }}</div>
             <h1>{{ $t('setup.title') }}</h1>
             <p>{{ $t('setup.subtitle') }}</p>
           </div>
           <span class="mode-code">{{ settings.mode === 'song-battle-royale' ? 'BR' : 'GL' }}</span>
         </header>
+
+        <section class="setup-section session-rules-section">
+          <label class="field-label" for="session-rules"><span>{{ $t('setup.sessionRules') }}</span></label>
+          <textarea id="session-rules" v-model="currentSessionRules" :placeholder="$t('setup.sessionRulesPlaceholder')" maxlength="600"></textarea>
+          <small>{{ $t('setup.sessionRulesHint') }}</small>
+        </section>
 
         <template v-if="settings.mode === 'song-battle-royale'">
           <div v-if="battle.phase !== 'setup'" class="locked-state">
@@ -448,7 +617,7 @@ onBeforeUnmount(() => {
                 <div v-for="(question, index) in battle.questions" :key="question.id" class="question-editor">
                   <div class="question-editor-head"><strong>#{{ String(index + 1).padStart(2, '0') }}</strong><button type="button" :aria-label="$t('actions.delete')" :title="$t('actions.delete')" @click="battle.removeQuestion(question.id)"><Trash2 :size="14" /></button></div>
                   <label><span>{{ $t('question.author') }}</span><select v-model="question.authorPlayerId"><option v-for="player in currentPlayers" :key="player.id" :value="player.id">{{ player.name || $t('player.placeholder') }}</option></select></label>
-                  <label><span>{{ $t('question.title') }}</span><input v-model="question.title" type="text" :placeholder="$t('question.titlePlaceholder')" maxlength="80" /></label>
+                  <label><span>{{ $t('question.source') }}</span><input v-model="question.title" type="text" :placeholder="$t('question.sourcePlaceholder')" maxlength="80" /></label>
                   <label><span>{{ $t('question.answer') }}</span><input v-model="question.answer" type="text" :placeholder="$t('question.answerPlaceholder')" maxlength="100" @input="questionChanged(question)" /></label>
                 </div>
               </div>
@@ -472,7 +641,7 @@ onBeforeUnmount(() => {
             <div class="question-editors">
               <div v-for="(question, index) in plain.questions" :key="question.id" class="question-editor">
                 <div class="question-editor-head"><strong>#{{ String(index + 1).padStart(2, '0') }}</strong><button type="button" :aria-label="$t('actions.delete')" :title="$t('actions.delete')" @click="plain.removeQuestion(question.id)"><Trash2 :size="14" /></button></div>
-                <label><span>{{ $t('question.title') }}</span><input v-model="question.title" type="text" :placeholder="$t('question.titlePlaceholder')" maxlength="80" /></label>
+                <label><span>{{ $t('question.source') }}</span><input v-model="question.title" type="text" :placeholder="$t('question.sourcePlaceholder')" maxlength="80" /></label>
                 <label><span>{{ $t('question.answer') }}</span><input v-model="question.answer" type="text" :placeholder="$t('question.answerPlaceholder')" maxlength="100" @input="questionChanged(question)" /></label>
               </div>
             </div>
@@ -487,18 +656,18 @@ onBeforeUnmount(() => {
             <div class="eyebrow">PLAY / 02</div>
             <h2>{{ $t('game.title') }}</h2>
             <p v-if="settings.mode === 'give-your-letters'">{{ allPlainSolved ? $t('game.allComplete') : $t('game.plainIntro') }}</p>
-            <p v-else-if="battle.phase === 'playing'">{{ $t('game.currentTurn') }} <strong>{{ currentActor?.name }}</strong></p>
+            <p v-else-if="battle.phase === 'playing'">{{ $t('game.nextPlayer') }} <strong>{{ currentActor?.name }}</strong></p>
             <p v-else-if="battle.phase === 'finished'">{{ $t('game.finished') }}</p>
             <p v-else>{{ $t('game.waiting') }}</p>
           </div>
           <button v-if="settings.mode === 'song-battle-royale' && battle.phase === 'setup'" class="start-button" type="button" @click="startGame"><Play :size="19" fill="currentColor" />{{ $t('game.start') }}</button>
           <div v-else-if="settings.mode === 'song-battle-royale'" class="current-actor-badge">
-            <span>{{ battle.phase === 'finished' ? 'END' : 'TURN' }}</span><strong>{{ currentActor?.name || $t('game.finished') }}</strong>
+            <span>{{ $t(battle.phase === 'finished' ? 'game.endBadge' : 'game.turnBadge') }}</span><strong>{{ currentActor?.name || $t('game.finished') }}</strong>
           </div>
-          <div v-else class="current-actor-badge plain"><span>SHARED</span><strong>{{ plain.guessedLetters.length }}</strong></div>
+          <div v-else class="current-actor-badge plain"><span>{{ $t('game.sharedBadge') }}</span><strong>{{ currentSortedGuesses.length }}</strong></div>
         </section>
 
-        <div v-if="settings.mode === 'song-battle-royale'" class="standings-strip" aria-label="Player standings">
+        <div v-if="settings.mode === 'song-battle-royale'" class="standings-strip" :aria-label="$t('game.playerStandings')">
           <div v-for="(player, index) in currentPlayers" :key="player.id" :class="[`standing-${outcomeMap.get(player.id) || 'active'}`, { current: player.id === battle.currentActorId }]">
             <span>{{ index + 1 }}</span><strong>{{ player.name || '—' }}</strong><small>{{ $t(`player.status.${outcomeMap.get(player.id) || 'active'}`) }}</small>
           </div>
@@ -510,15 +679,22 @@ onBeforeUnmount(() => {
             <button type="button" :class="{ active: guessType === 'guess-answer' }" @click="guessType = 'guess-answer'"><BookOpen :size="16" />{{ $t('game.answer') }}</button>
           </div>
           <div class="guess-form">
-            <label v-if="needsTarget" class="guess-target"><span>{{ $t('game.target') }}</span><select v-model="targetQuestionId"><option v-for="question in selectableQuestions" :key="question.id" :value="question.id">{{ question.title || $t('question.titlePlaceholder') }}</option></select></label>
-            <label class="guess-input-wrap"><span>{{ guessType === 'guess-letter' ? $t('game.letter') : $t('game.answer') }}</span><input id="guess-input" v-model="guessValue" type="text" :placeholder="guessType === 'guess-letter' ? $t('game.inputLetter') : $t('game.inputAnswer')" autocomplete="off" @keydown.enter.prevent="submitGuess" /></label>
-            <button class="submit-action" type="button" :disabled="!canSubmit" @click="submitGuess">{{ $t('game.submit') }}<ArrowUp :size="18" /></button>
+            <label v-if="needsTarget" class="guess-target"><span>{{ $t('game.target') }}</span><select v-model="targetQuestionId"><option v-for="question in selectableQuestions" :key="question.id" :value="question.id">{{ $t('board.anonymousQuestion', { number: String(currentQuestions.findIndex((item) => item.id === question.id) + 1).padStart(2, '0') }) }} · {{ question.answer }} · {{ question.title || $t('question.sourceUnknown') }}</option></select></label>
+            <template v-if="guessType === 'guess-letter'">
+              <label class="guess-input-wrap"><span>{{ $t('game.letter') }}</span><input id="guess-input" v-model="guessValue" type="text" :placeholder="$t('game.inputLetter')" autocomplete="off" @keydown.enter.prevent="submitGuess" /></label>
+              <button class="submit-action" type="button" :disabled="!canSubmit" @click="submitGuess">{{ $t('game.submitLetter') }}<ArrowUp :size="18" /></button>
+            </template>
+            <div v-else class="answer-decision-buttons">
+              <button class="button button-danger" type="button" :disabled="!canSubmit" @click="resolveAnswer(false)">{{ $t('game.answerIncorrect') }}</button>
+              <button class="button button-primary" type="button" :disabled="!canSubmit" @click="resolveAnswer(true)">{{ $t('game.answerCorrect') }}</button>
+            </div>
           </div>
         </section>
 
-        <div class="macro-bar" aria-label="Game actions">
-          <button type="button" aria-keyshortcuts="Control+Shift+G" @click="randomizeOrder"><Shuffle :size="16" />{{ $t(settings.mode === 'song-battle-royale' ? 'actions.randomPlayers' : 'actions.randomQuestions') }}<kbd>G</kbd></button>
-          <button type="button" aria-keyshortcuts="Control+Shift+R" @click="restoreOrder"><RotateCcw :size="16" />{{ $t(settings.mode === 'song-battle-royale' ? 'actions.restorePlayers' : 'actions.restoreQuestions') }}<kbd>R</kbd></button>
+        <div class="macro-bar" :aria-label="$t('actions.gameActions')">
+          <button type="button" aria-keyshortcuts="Control+Shift+G" @click="randomizeOrder"><Shuffle :size="16" />{{ $t('actions.randomQuestions') }}<kbd>G</kbd></button>
+          <button type="button" aria-keyshortcuts="Control+Shift+R" @click="restoreOrder"><RotateCcw :size="16" />{{ $t('actions.restoreQuestions') }}<kbd>R</kbd></button>
+          <button type="button" :disabled="!undoAvailable" @click="requestUndo"><Undo2 :size="16" />{{ $t('actions.undo') }}</button>
           <button type="button" aria-keyshortcuts="Control+Shift+F" @click="copyImage"><Image :size="16" />{{ $t('actions.copyImage') }}<kbd>F</kbd></button>
           <button class="danger" type="button" aria-keyshortcuts="Control+Shift+C" @click="requestReset"><Trash2 :size="16" />{{ $t('actions.reset') }}<kbd>C</kbd></button>
         </div>
@@ -530,14 +706,13 @@ onBeforeUnmount(() => {
           :guesses-by-question="guessesByQuestion"
           :distinguish-types="settings.distinguishCharacterTypes"
           :visible-categories="settings.visibleCategories"
+          :show-authors="settings.mode === 'song-battle-royale'"
           @cycle-control="cycleControl"
-          @bulk-control="bulkControl"
-          @toggle-solved="toggleSolved"
         />
 
         <div class="lower-grid">
           <section class="panel legend-panel">
-            <header class="section-header compact"><div><div class="eyebrow">COLOR KEY</div><h2>{{ $t('category.title') }}</h2></div><label class="switch"><input v-model="settings.distinguishCharacterTypes" type="checkbox" /><span></span></label></header>
+            <header class="section-header compact"><div><div class="eyebrow">{{ $t('category.eyebrow') }}</div><h2>{{ $t('category.title') }}</h2></div><label class="switch"><input v-model="settings.distinguishCharacterTypes" type="checkbox" /><span></span></label></header>
             <div class="legend-grid">
               <button v-for="category in CATEGORY_KEYS" :key="category" type="button" :class="[`legend-${category}`, { muted: !settings.visibleCategories[category] }]" :aria-pressed="settings.visibleCategories[category]" @click="settings.visibleCategories[category] = !settings.visibleCategories[category]">
                 <span></span>{{ $t(`category.${category}`) }}
@@ -553,6 +728,65 @@ onBeforeUnmount(() => {
 
     <input ref="fileInput" class="sr-only" type="file" accept="application/json,.json" @change="importState" />
 
+    <AppModal :open="themeSettingsOpen" :title="$t('theme.settingsTitle')" :description="$t('theme.settingsDescription')" @close="themeSettingsOpen = false">
+      <div class="theme-settings-layout">
+        <section class="hue-picker-section">
+          <div
+            class="hue-compass"
+            role="slider"
+            tabindex="0"
+            :aria-label="$t('theme.hue')"
+            aria-valuemin="0"
+            aria-valuemax="359"
+            :aria-valuenow="settings.accentHue"
+            :style="{ '--hue-rotation': `${settings.accentHue}deg`, '--hand-tint': `${settings.accentHue}deg` }"
+            @pointerdown="startHueDrag"
+            @pointermove="moveHueDrag"
+            @pointerup="stopHueDrag"
+            @pointercancel="stopHueDrag"
+            @keydown="onHueKeydown"
+          >
+            <div class="hue-spectrum"></div>
+            <img class="compass-dial" :src="isDark ? compassDialDarkUrl : compassDialLightUrl" alt="" draggable="false" />
+            <img class="compass-hand" :src="compassHandUrl" alt="" draggable="false" />
+            <span class="hue-center" :style="{ background: `hsl(${settings.accentHue} 86% 52%)` }">{{ settings.accentHue }}°</span>
+          </div>
+          <div class="hue-stepper" :aria-label="$t('theme.hueFineTune')">
+            <button type="button" @click="adjustHue(-15)">−15</button>
+            <button type="button" @click="adjustHue(-1)">−1</button>
+            <input v-model.number="accentHue" type="number" min="0" max="359" :aria-label="$t('theme.hueValue')" />
+            <button type="button" @click="adjustHue(1)">+1</button>
+            <button type="button" @click="adjustHue(15)">+15</button>
+          </div>
+        </section>
+
+        <section class="theme-options-section">
+          <div class="theme-option-group">
+            <span>{{ $t('theme.appearance') }}</span>
+            <div class="theme-segments">
+              <button v-for="theme in themeOptions" :key="theme" type="button" :class="{ active: settings.theme === theme }" @click="settings.setTheme(theme)">{{ $t(`theme.${theme}`) }}</button>
+            </div>
+          </div>
+          <label class="theme-range">
+            <span>{{ $t('theme.hue') }}</span>
+            <input v-model.number="accentHue" type="range" min="0" max="359" step="1" />
+          </label>
+          <div class="hue-presets">
+            <span>{{ $t('theme.presets') }}</span>
+            <div>
+              <button v-for="hue in huePresets" :key="hue" type="button" :class="{ active: settings.accentHue === hue }" :style="{ '--preset-color': `hsl(${hue} 82% 50%)` }" :aria-label="$t('theme.useHue', { hue })" @click="settings.setAccentHue(hue)"></button>
+            </div>
+          </div>
+          <div class="theme-live-preview">
+            <span>{{ $t('theme.preview') }}</span>
+            <strong>{{ $t('theme.previewTitle') }}</strong>
+            <p>{{ $t('theme.previewBody') }}</p>
+            <button type="button">{{ $t('theme.previewAction') }}</button>
+          </div>
+        </section>
+      </div>
+    </AppModal>
+
     <AppModal :open="helpOpen" :title="$t('help.title')" @close="helpOpen = false">
       <div class="help-content">
         <p class="help-intro">{{ $t('help.intro') }}</p>
@@ -567,7 +801,9 @@ onBeforeUnmount(() => {
       </div>
     </AppModal>
 
-    <AppModal :open="Boolean(confirmState)" :title="confirmTitle" :description="confirmDescription" :confirm-label="$t('actions.confirm')" :danger="confirmState?.kind !== 'import'" @close="confirmState = null" @confirm="executeConfirm" />
+    <AppModal :open="Boolean(confirmState)" :title="confirmTitle" :description="confirmDescription" :confirm-label="$t('actions.confirm')" :danger="confirmState?.kind !== 'import'" @close="confirmState = null" @confirm="executeConfirm">
+      <label v-if="confirmState?.kind === 'reset'" class="reset-rules-option"><input v-model="clearSessionRulesOnReset" type="checkbox" /><span>{{ $t('dialog.clearSessionRules') }}</span></label>
+    </AppModal>
 
     <Transition name="toast"><div v-if="toastMessage" class="toast" role="status"><Check :size="17" />{{ toastMessage }}</div></Transition>
   </div>

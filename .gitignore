@@ -1,10 +1,48 @@
+# Dependencies
 node_modules/
+
+# Build output and caches
 dist/
+dev-dist/
 .vite/
-.wrangler/
-*.local
 coverage/
+*.tsbuildinfo
+
+# Runtime and deployment tooling
+.wrangler/
+.openai/cache/
+
+# Environment and local configuration
+.env
+.env.*
+!.env.example
+*.local
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Editors and operating systems
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+*~
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Local project references and working material
 _handoff/
 _ref/
 _work/
 docs/
+.agents/
+.codex/

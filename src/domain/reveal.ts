@@ -1,5 +1,11 @@
 import type { GameAction, PlainAction, Question, QuestionStatus } from './game'
-import { normalizeAnswer, normalizeCharacter, toCodePoints } from './normalize'
+import { guessRevealsCharacter, toCodePoints } from './normalize'
+
+export interface RevealedCharacter {
+  character: string
+  revealed: boolean
+  guessed: boolean
+}
 
 export function guessedForQuestion(actions: Array<GameAction | PlainAction>, questionId: string): string[] {
   return actions
@@ -12,31 +18,26 @@ export function directAnswerSolved(actions: Array<GameAction | PlainAction>, que
 }
 
 export function getQuestionStatus(question: Question, guesses: string[], actions: Array<GameAction | PlainAction>): QuestionStatus {
-  if (question.hostStatusOverride === 'solved' || directAnswerSolved(actions, question)) return 'solved'
+  if (directAnswerSolved(actions, question)) return 'solved'
   const answerCharacters = toCodePoints(question.answer)
   if (!answerCharacters.some((character) => !/\s/u.test(character))) return 'active'
-  const guessed = new Set(guesses.map(normalizeCharacter))
   const allRevealed = answerCharacters.every((character, index) => {
     if (/\s/u.test(character)) return true
     const control = question.characterControls[index] ?? 'auto'
-    return control === 'show' || (control !== 'hide' && guessed.has(normalizeCharacter(character)))
+    return control === 'show' || (control !== 'hide' && guesses.some((guess) => guessRevealsCharacter(character, guess)))
   })
   return allRevealed ? 'solved' : 'active'
 }
 
-export function revealQuestion(question: Question, guesses: string[], actions: Array<GameAction | PlainAction>): Array<{ character: string; revealed: boolean }> {
+export function revealQuestion(question: Question, guesses: string[], actions: Array<GameAction | PlainAction>): RevealedCharacter[] {
   const status = getQuestionStatus(question, guesses, actions)
-  const guessed = new Set(guesses.map(normalizeCharacter))
   return toCodePoints(question.answer).map((character, index) => {
-    if (/\s/u.test(character)) return { character, revealed: true }
-    if (status === 'solved') return { character, revealed: true }
+    const guessed = guesses.some((guess) => guessRevealsCharacter(character, guess))
+    if (/\s/u.test(character)) return { character, revealed: true, guessed: false }
+    if (status === 'solved') return { character, revealed: true, guessed }
     const control = question.characterControls[index] ?? 'auto'
-    if (control === 'hide') return { character, revealed: false }
-    if (control === 'show') return { character, revealed: true }
-    return { character, revealed: guessed.has(normalizeCharacter(character)) }
+    if (control === 'hide') return { character, revealed: false, guessed }
+    if (control === 'show') return { character, revealed: true, guessed }
+    return { character, revealed: guessed, guessed }
   })
-}
-
-export function answerMatches(question: Question, value: string): boolean {
-  return normalizeAnswer(question.answer) === normalizeAnswer(value) && normalizeAnswer(value).length > 0
 }

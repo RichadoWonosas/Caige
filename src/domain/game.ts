@@ -25,7 +25,6 @@ export interface Question {
   authorPlayerId: string | null
   title: string
   answer: string
-  hostStatusOverride: 'auto' | 'solved'
   characterControls: CharacterControl[]
   createdAt: string
 }
@@ -38,6 +37,7 @@ export interface GameAction {
   actorPlayerId: string
   questionId?: string
   value: string
+  hostJudgement?: 'correct' | 'incorrect'
   result: ActionResultType
   createdAt: string
 }
@@ -47,14 +47,17 @@ export interface PlainAction {
   type: 'guess-letter' | 'guess-answer'
   questionId?: string
   value: string
+  hostJudgement?: 'correct' | 'incorrect'
   result: ActionResultType
   createdAt: string
 }
 
 export interface PlainLettersState {
   questions: Question[]
+  questionOrder: string[]
   guessedLetters: string[]
   actionHistory: PlainAction[]
+  sessionRules: string
 }
 
 export interface StandardRulesetConfig {
@@ -67,6 +70,7 @@ export interface StandardRulesetConfig {
 export interface BattleRoyaleState {
   players: Player[]
   questions: Question[]
+  questionOrder: string[]
   turnOrder: string[]
   currentActorId: string | null
   actionHistory: GameAction[]
@@ -74,6 +78,7 @@ export interface BattleRoyaleState {
   rulesetId: 'standard-v1'
   rulesetVersion: 1
   rulesetConfig: StandardRulesetConfig
+  sessionRules: string
 }
 
 export interface GameState {
@@ -128,7 +133,6 @@ export const createQuestion = (authorPlayerId: string | null = null): Question =
   authorPlayerId,
   title: '',
   answer: '',
-  hostStatusOverride: 'auto',
   characterControls: [],
   createdAt: new Date().toISOString(),
 })
