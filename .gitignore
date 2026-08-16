@@ -10,7 +10,7 @@ coverage/
 
 # Runtime and deployment tooling
 .wrangler/
-.openai/cache/
+.openai/
 
 # Environment and local configuration
 .env

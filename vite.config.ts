@@ -2,33 +2,12 @@ import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
-import { mkdir, writeFile } from 'node:fs/promises'
-
-const sitesStaticWorker = () => ({
-  name: 'sites-static-worker',
-  apply: 'build' as const,
-  async closeBundle() {
-    await mkdir('dist/server', { recursive: true })
-    await writeFile('dist/server/index.js', `const worker = {
-  async fetch(request, env) {
-    const response = await env.ASSETS.fetch(request)
-    if (response.status !== 404 || request.method !== 'GET') return response
-    const url = new URL(request.url)
-    if (/\\.[a-z0-9]+$/i.test(url.pathname)) return response
-    return env.ASSETS.fetch(new Request(new URL('/index.html', request.url), request))
-  }
-}
-export default worker
-`)
-  },
-})
 
 export default defineConfig({
   base: '/Caige/',
   plugins: [
     vue(),
     tailwindcss(),
-    sitesStaticWorker(),
     VitePWA({
       registerType: 'prompt',
       includeAssets: ['favicon.png', 'apple-touch-icon.png'],
