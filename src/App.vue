@@ -3,9 +3,9 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRegisterSW } from 'virtual:pwa-register/vue'
 import {
-  ArrowDown, ArrowUp, BookOpen, Check, CircleHelp, Download,
+  ArrowDown, ArrowUp, BookOpen, Check, CircleHelp, CircleX, Download,
   Image, Languages, LockKeyhole, MonitorDown, Play, Plus, RotateCcw, Save, Settings2,
-  Shuffle, Swords, Trash2, Type, Undo2, Upload,
+  Shuffle, Swords, Trash2, TriangleAlert, Type, Undo2, Upload,
 } from 'lucide-vue-next'
 import AppModal from './components/AppModal.vue'
 import QuestionBoard from './components/QuestionBoard.vue'
@@ -17,8 +17,9 @@ import type { BattleRoyaleState, CharacterControl, GameAction, GameState, Locale
 import { CATEGORY_KEYS } from './domain/game'
 import { guessedForQuestion, getQuestionStatus, revealQuestion } from './domain/reveal'
 import { sortedLetterGuesses } from './domain/guess-history'
-import { standardRuleset } from './domain/rulesets/standard-v1'
-import { copyBoardImage } from './features/screenshot/render'
+import { toCodePoints } from './domain/normalize'
+import { DEFAULT_STANDARD_RULESET_CONFIG, standardRuleset } from './domain/rulesets/standard-v1'
+import { copyBoardImage, saveBoardImage, type BoardSnapshot } from './features/screenshot/render'
 import { loadGameState, saveGameState, validateImportedState } from './persistence/indexed-db'
 import compassHandUrl from './assets/theme/compass-hand.svg?url'
 import compassDialLightUrl from './assets/theme/compass-dial-light.svg?url'
@@ -29,6 +30,9 @@ interface InstallPromptEvent extends Event {
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>
 }
 
+type ToastTone = 'success' | 'warning' | 'error'
+interface ToastItem { id: number; message: string; tone: ToastTone }
+
 const settings = useSettingsStore()
 const plain = usePlainStore()
 const battle = useBattleStore()
@@ -36,7 +40,8 @@ const { t, locale } = useI18n()
 
 const helpOpen = ref(false)
 const themeSettingsOpen = ref(false)
-const toastMessage = ref('')
+const saveImageOpen = ref(false)
+const toasts = ref<ToastItem[]>([])
 const hydrated = ref(false)
 const saveStatus = ref<'saved' | 'saving'>('saved')
 const guessType = ref<'guess-letter' | 'guess-answer'>('guess-letter')
@@ -52,7 +57,12 @@ const isDark = ref(false)
 const hueDragging = ref(false)
 const installPrompt = ref<InstallPromptEvent | null>(null)
 const isStandalone = ref(false)
-let toastTimer: ReturnType<typeof setTimeout> | undefined
+const imagePressing = ref(false)
+const toastTimers = new Map<number, ReturnType<typeof setTimeout>>()
+let nextToastId = 0
+let imagePressTimer: ReturnType<typeof setTimeout> | undefined
+let imagePressOrigin: { x: number; y: number } | undefined
+let ignoreImageClickUntil = 0
 let saveTimer: ReturnType<typeof setTimeout> | undefined
 let themeMedia: MediaQueryList | undefined
 
@@ -124,10 +134,17 @@ const confirmDescription = computed(() => {
 
 const { needRefresh, offlineReady, updateServiceWorker } = useRegisterSW({ immediate: true })
 
-function showToast(message: string) {
-  toastMessage.value = message
-  clearTimeout(toastTimer)
-  toastTimer = setTimeout(() => { toastMessage.value = '' }, 3200)
+function dismissToast(id: number) {
+  clearTimeout(toastTimers.get(id))
+  toastTimers.delete(id)
+  toasts.value = toasts.value.filter((item) => item.id !== id)
+}
+
+function showToast(message: string, tone: ToastTone = 'success') {
+  const id = ++nextToastId
+  toasts.value.push({ id, message, tone })
+  if (toasts.value.length > 5) dismissToast(toasts.value[0].id)
+  toastTimers.set(id, setTimeout(() => dismissToast(id), 3200))
 }
 
 function cloneState<T>(value: T): T {
@@ -184,6 +201,7 @@ function applyState(state: GameState) {
   battle.$patch({
     ...state.battleRoyale,
     questionOrder: Array.isArray(state.battleRoyale.questionOrder) ? state.battleRoyale.questionOrder : state.battleRoyale.questions.map((question) => question.id),
+    rulesetConfig: { ...DEFAULT_STANDARD_RULESET_CONFIG, ...state.battleRoyale.rulesetConfig },
     sessionRules: state.battleRoyale.sessionRules ?? '',
   })
   battleUndoStack.value = []
@@ -251,14 +269,14 @@ function onAppInstalled() {
 
 async function installApp() {
   if (!installPrompt.value) {
-    showToast(t(import.meta.env.DEV ? 'pwa.installPreparing' : 'pwa.installUnavailable'))
+    showToast(t(import.meta.env.DEV ? 'pwa.installPreparing' : 'pwa.installUnavailable'), 'warning')
     return
   }
   const promptEvent = installPrompt.value
   await promptEvent.prompt()
   const choice = await promptEvent.userChoice
   installPrompt.value = null
-  if (choice.outcome === 'dismissed') showToast(t('pwa.installDismissed'))
+  if (choice.outcome === 'dismissed') showToast(t('pwa.installDismissed'), 'warning')
 }
 
 function onLocaleChange(event: Event) {
@@ -283,6 +301,8 @@ function addBattleQuestion() {
 }
 
 function questionChanged(question: Question) {
+  const characters = toCodePoints(question.answer)
+  if (characters.length > 256) question.answer = characters.slice(0, 256).join('')
   if (settings.mode === 'song-battle-royale') battle.normalizeQuestionControls(question.id)
   else plain.normalizeQuestionControls(question.id)
 }
@@ -296,7 +316,7 @@ function startGame() {
   const violations = battle.startGame()
   if (violations.length) {
     discardUndoCheckpoint()
-    showToast(t(`errors.${violations[0].code}`))
+    showToast(t(`errors.${violations[0].code}`), 'error')
     return
   }
   showToast(t('toast.started'))
@@ -305,7 +325,7 @@ function startGame() {
 
 function submitGuess() {
   if (!canSubmit.value) {
-    showToast(t('toast.invalid'))
+    showToast(t('toast.invalid'), 'warning')
     return
   }
   checkpointUndo()
@@ -313,13 +333,13 @@ function submitGuess() {
   if (settings.mode === 'give-your-letters') result = plain.submitLetter(guessValue.value)
   else result = battle.submitAction({ type: 'guess-letter', questionId: needsTarget.value ? targetQuestionId.value : undefined, value: guessValue.value }).result
   if (result === 'invalid') discardUndoCheckpoint()
-  showToast(t(`toast.${result}`))
+  showToast(t(`toast.${result}`), result === 'miss' || result === 'invalid' ? 'warning' : 'success')
   if (result !== 'invalid') guessValue.value = ''
 }
 
 function resolveAnswer(correct: boolean) {
   if (!canSubmit.value || !targetQuestionId.value) {
-    showToast(t('toast.invalidTarget'))
+    showToast(t('toast.invalidTarget'), 'warning')
     return
   }
   checkpointUndo()
@@ -327,7 +347,7 @@ function resolveAnswer(correct: boolean) {
     ? plain.submitAnswer(targetQuestionId.value, correct)
     : battle.submitAction({ type: 'guess-answer', questionId: targetQuestionId.value, value: '', hostJudgement: correct ? 'correct' : 'incorrect' }).result
   if (result === 'invalid') discardUndoCheckpoint()
-  showToast(t(`toast.${result}`))
+  showToast(t(`toast.${result}`), result === 'miss' || result === 'invalid' ? 'warning' : 'success')
 }
 
 function cycleControl(questionId: string, index: number) {
@@ -399,13 +419,13 @@ async function importState(event: Event) {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
   input.value = ''
-  if (!file || file.size > 2_000_000) return showToast(t('errors.import'))
+  if (!file || file.size > 2_000_000) return showToast(t('errors.import'), 'error')
   try {
     const value = JSON.parse(await file.text())
     if (!validateImportedState(value)) throw new Error('invalid')
     pendingImport.value = value
     confirmState.value = { kind: 'import' }
-  } catch { showToast(t('errors.import')) }
+  } catch { showToast(t('errors.import'), 'error') }
 }
 
 function historyLine(action: GameAction | (typeof plain.actionHistory)[number]) {
@@ -414,40 +434,97 @@ function historyLine(action: GameAction | (typeof plain.actionHistory)[number]) 
   return `${actor ? `${actor} · ` : ''}${text} · ${t(`history.result.${action.result}`)}`
 }
 
+function boardSnapshot(): BoardSnapshot {
+  const isBattle = settings.mode === 'song-battle-royale'
+  const appliedRules = isBattle ? [
+    battle.rulesetConfig.allowSelfTarget ? t('rules.allowSelf') : t('rules.disallowSelf'),
+    battle.rulesetConfig.consumeTurnOnMiss ? t('rules.consumeMiss') : t('rules.keepTurnOnMiss'),
+    battle.rulesetConfig.extraTurnOnCorrect ? t('rules.extraTurnOnCorrect') : t('rules.noExtraTurnOnCorrect'),
+    battle.rulesetConfig.autoWinner ? t('rules.autoWinner') : t('rules.manualWinner'),
+    battle.rulesetConfig.letterScope === 'all' ? t('rules.globalLetters') : t('rules.targetLetters'),
+  ] : undefined
+  return {
+    title: `${t('brand.name')} · ${t(isBattle ? 'mode.battle' : 'mode.plain')}`,
+    subtitle: new Intl.DateTimeFormat(settings.locale, { dateStyle: 'long', timeStyle: 'short' }).format(new Date()),
+    theme: isDark.value ? 'dark' : 'light',
+    themeHue: settings.accentHue,
+    rules: currentSessionRules.value,
+    appliedRules,
+    nextPlayer: isBattle && currentActor.value ? `${t('game.nextPlayer')} · ${currentActor.value.name}` : undefined,
+    players: isBattle ? currentPlayers.value.map((player) => {
+      const status = outcomeMap.value.get(player.id) ?? 'active'
+      return { name: player.name || '—', status, statusLabel: t(`player.status.${status}`) }
+    }) : undefined,
+    guessedCharacters: currentSortedGuesses.value,
+    categories: CATEGORY_KEYS.map((key) => ({ key, label: t(`category.${key}`), enabled: settings.distinguishCharacterTypes && settings.visibleCategories[key] })),
+    labels: {
+      rules: t('screenshot.rules'),
+      appliedRules: t('screenshot.appliedRules'),
+      players: t('screenshot.players'),
+      categories: t('screenshot.categories'),
+      guesses: t('screenshot.guesses'),
+      guessOrder: t('screenshot.guessOrder'),
+      history: t('screenshot.history'),
+    },
+    questions: currentQuestions.value.map((question, index) => {
+      const status = getQuestionStatus(question, guessesByQuestion.value[question.id] ?? [], currentActions.value)
+      return {
+        number: index + 1,
+        answer: question.answer,
+        source: question.title,
+        author: isBattle ? battle.players.find((player) => player.id === question.authorPlayerId)?.name : undefined,
+        status,
+        statusLabel: t(`question.status.${status}`),
+        characters: revealQuestion(question, guessesByQuestion.value[question.id] ?? [], currentActions.value),
+      }
+    }),
+    history: currentActions.value.map(historyLine).join('  →  '),
+  }
+}
+
 async function copyImage() {
   try {
-    const result = await copyBoardImage({
-      title: `${t('brand.name')} · ${t(settings.mode === 'song-battle-royale' ? 'mode.battle' : 'mode.plain')}`,
-      subtitle: new Intl.DateTimeFormat(settings.locale, { dateStyle: 'long', timeStyle: 'short' }).format(new Date()),
-      theme: isDark.value ? 'dark' : 'light',
-      themeHue: settings.accentHue,
-      rules: currentSessionRules.value,
-      nextPlayer: settings.mode === 'song-battle-royale' && currentActor.value ? `${t('game.nextPlayer')} · ${currentActor.value.name}` : undefined,
-      guessedCharacters: currentSortedGuesses.value,
-      categories: CATEGORY_KEYS.map((key) => ({ key, label: t(`category.${key}`), enabled: settings.distinguishCharacterTypes && settings.visibleCategories[key] })),
-      labels: {
-        rules: t('screenshot.rules'),
-        categories: t('screenshot.categories'),
-        guesses: t('screenshot.guesses'),
-        guessOrder: t('screenshot.guessOrder'),
-        history: t('screenshot.history'),
-      },
-      questions: currentQuestions.value.map((question, index) => {
-        const status = getQuestionStatus(question, guessesByQuestion.value[question.id] ?? [], currentActions.value)
-        return {
-          number: index + 1,
-          answer: question.answer,
-          source: question.title,
-          author: settings.mode === 'song-battle-royale' ? battle.players.find((player) => player.id === question.authorPlayerId)?.name : undefined,
-          status,
-          statusLabel: t(`question.status.${status}`),
-          characters: revealQuestion(question, guessesByQuestion.value[question.id] ?? [], currentActions.value),
-        }
-      }),
-      history: currentActions.value.map(historyLine).join('  →  '),
-    })
+    const result = await copyBoardImage(boardSnapshot())
     showToast(t(result === 'copied' ? 'toast.copied' : 'toast.downloaded'))
-  } catch { showToast(t('errors.generic')) }
+  } catch { showToast(t('errors.generic'), 'error') }
+}
+
+async function saveImage() {
+  saveImageOpen.value = false
+  try {
+    await saveBoardImage(boardSnapshot())
+    showToast(t('toast.imageSaved'))
+  } catch { showToast(t('errors.generic'), 'error') }
+}
+
+function cancelImageLongPress() {
+  clearTimeout(imagePressTimer)
+  imagePressTimer = undefined
+  imagePressOrigin = undefined
+  imagePressing.value = false
+}
+
+function startImageLongPress(event: PointerEvent) {
+  if (event.pointerType === 'mouse' && event.button !== 0) return
+  cancelImageLongPress()
+  imagePressOrigin = { x: event.clientX, y: event.clientY }
+  imagePressing.value = true
+  imagePressTimer = setTimeout(() => {
+    imagePressTimer = undefined
+    imagePressing.value = false
+    ignoreImageClickUntil = Date.now() + 900
+    saveImageOpen.value = true
+  }, 650)
+}
+
+function moveImageLongPress(event: PointerEvent) {
+  if (!imagePressOrigin) return
+  if (Math.hypot(event.clientX - imagePressOrigin.x, event.clientY - imagePressOrigin.y) > 12) cancelImageLongPress()
+}
+
+function handleImageButtonClick() {
+  if (Date.now() < ignoreImageClickUntil) return
+  void copyImage()
 }
 
 async function performUpdate() {
@@ -488,7 +565,7 @@ watch(
         saveStatus.value = 'saved'
       } catch {
         saveStatus.value = 'saved'
-        showToast(t('errors.storage'))
+        showToast(t('errors.storage'), 'error')
       }
     }, 550)
   },
@@ -518,7 +595,9 @@ onBeforeUnmount(() => {
   window.removeEventListener('beforeinstallprompt', onBeforeInstallPrompt)
   window.removeEventListener('appinstalled', onAppInstalled)
   themeMedia?.removeEventListener('change', applyTheme)
-  clearTimeout(toastTimer)
+  cancelImageLongPress()
+  toastTimers.forEach((timer) => clearTimeout(timer))
+  toastTimers.clear()
   clearTimeout(saveTimer)
 })
 </script>
@@ -618,16 +697,17 @@ onBeforeUnmount(() => {
                   <div class="question-editor-head"><strong>#{{ String(index + 1).padStart(2, '0') }}</strong><button type="button" :aria-label="$t('actions.delete')" :title="$t('actions.delete')" @click="battle.removeQuestion(question.id)"><Trash2 :size="14" /></button></div>
                   <label><span>{{ $t('question.author') }}</span><select v-model="question.authorPlayerId"><option v-for="player in currentPlayers" :key="player.id" :value="player.id">{{ player.name || $t('player.placeholder') }}</option></select></label>
                   <label><span>{{ $t('question.source') }}</span><input v-model="question.title" type="text" :placeholder="$t('question.sourcePlaceholder')" maxlength="80" /></label>
-                  <label><span>{{ $t('question.answer') }}</span><input v-model="question.answer" type="text" :placeholder="$t('question.answerPlaceholder')" maxlength="100" @input="questionChanged(question)" /></label>
+                  <label><span>{{ $t('question.answer') }}</span><input v-model="question.answer" type="text" :placeholder="$t('question.answerPlaceholder')" @input="questionChanged(question)" /></label>
                 </div>
               </div>
               <button class="add-row-button" type="button" @click="addBattleQuestion"><Plus :size="16" />{{ $t('actions.addQuestion') }}</button>
             </section>
 
             <section class="setup-section rules-section">
-              <div class="subsection-title"><h2>{{ $t('setup.rules') }}</h2><span>id + v1</span></div>
+              <div class="subsection-title"><h2>{{ $t('setup.rules') }}</h2><span>{{ $t('rules.rulesetVersion', { version: 1 }) }}</span></div>
               <label class="toggle-row"><input v-model="battle.rulesetConfig.allowSelfTarget" type="checkbox" /><span>{{ $t('rules.allowSelf') }}</span></label>
               <label class="toggle-row"><input v-model="battle.rulesetConfig.consumeTurnOnMiss" type="checkbox" /><span>{{ $t('rules.consumeMiss') }}</span></label>
+              <label class="toggle-row"><input v-model="battle.rulesetConfig.extraTurnOnCorrect" type="checkbox" /><span>{{ $t('rules.extraTurnOnCorrect') }}</span></label>
               <label class="toggle-row"><input v-model="battle.rulesetConfig.autoWinner" type="checkbox" /><span>{{ $t('rules.autoWinner') }}</span></label>
               <label class="field-label"><span>{{ $t('game.letter') }}</span><select v-model="battle.rulesetConfig.letterScope"><option value="all">{{ $t('rules.globalLetters') }}</option><option value="target">{{ $t('rules.targetLetters') }}</option></select></label>
               <p class="rules-note">{{ $t('rules.localConfig') }}</p>
@@ -642,7 +722,7 @@ onBeforeUnmount(() => {
               <div v-for="(question, index) in plain.questions" :key="question.id" class="question-editor">
                 <div class="question-editor-head"><strong>#{{ String(index + 1).padStart(2, '0') }}</strong><button type="button" :aria-label="$t('actions.delete')" :title="$t('actions.delete')" @click="plain.removeQuestion(question.id)"><Trash2 :size="14" /></button></div>
                 <label><span>{{ $t('question.source') }}</span><input v-model="question.title" type="text" :placeholder="$t('question.sourcePlaceholder')" maxlength="80" /></label>
-                <label><span>{{ $t('question.answer') }}</span><input v-model="question.answer" type="text" :placeholder="$t('question.answerPlaceholder')" maxlength="100" @input="questionChanged(question)" /></label>
+                <label><span>{{ $t('question.answer') }}</span><input v-model="question.answer" type="text" :placeholder="$t('question.answerPlaceholder')" @input="questionChanged(question)" /></label>
               </div>
             </div>
             <button id="add-question" class="add-row-button" type="button" @click="plain.addQuestion"><Plus :size="16" />{{ $t('actions.addQuestion') }}</button>
@@ -695,7 +775,20 @@ onBeforeUnmount(() => {
           <button type="button" aria-keyshortcuts="Control+Shift+G" @click="randomizeOrder"><Shuffle :size="16" />{{ $t('actions.randomQuestions') }}<kbd>G</kbd></button>
           <button type="button" aria-keyshortcuts="Control+Shift+R" @click="restoreOrder"><RotateCcw :size="16" />{{ $t('actions.restoreQuestions') }}<kbd>R</kbd></button>
           <button type="button" :disabled="!undoAvailable" @click="requestUndo"><Undo2 :size="16" />{{ $t('actions.undo') }}</button>
-          <button type="button" aria-keyshortcuts="Control+Shift+F" @click="copyImage"><Image :size="16" />{{ $t('actions.copyImage') }}<kbd>F</kbd></button>
+          <button
+            type="button"
+            :class="{ 'long-pressing': imagePressing }"
+            :title="$t('actions.copyImageHint')"
+            :aria-label="$t('actions.copyImageHint')"
+            aria-keyshortcuts="Control+Shift+F"
+            @click="handleImageButtonClick"
+            @pointerdown="startImageLongPress"
+            @pointermove="moveImageLongPress"
+            @pointerup="cancelImageLongPress"
+            @pointercancel="cancelImageLongPress"
+            @pointerleave="cancelImageLongPress"
+            @contextmenu.prevent
+          ><Image :size="16" />{{ $t('actions.copyImage') }}<kbd>F</kbd></button>
           <button class="danger" type="button" aria-keyshortcuts="Control+Shift+C" @click="requestReset"><Trash2 :size="16" />{{ $t('actions.reset') }}<kbd>C</kbd></button>
         </div>
 
@@ -787,6 +880,15 @@ onBeforeUnmount(() => {
       </div>
     </AppModal>
 
+    <AppModal
+      :open="saveImageOpen"
+      :title="$t('dialog.saveImageTitle')"
+      :description="$t('dialog.saveImageBody')"
+      :confirm-label="$t('actions.saveImage')"
+      @close="saveImageOpen = false"
+      @confirm="saveImage"
+    />
+
     <AppModal :open="helpOpen" :title="$t('help.title')" @close="helpOpen = false">
       <div class="help-content">
         <p class="help-intro">{{ $t('help.intro') }}</p>
@@ -805,6 +907,15 @@ onBeforeUnmount(() => {
       <label v-if="confirmState?.kind === 'reset'" class="reset-rules-option"><input v-model="clearSessionRulesOnReset" type="checkbox" /><span>{{ $t('dialog.clearSessionRules') }}</span></label>
     </AppModal>
 
-    <Transition name="toast"><div v-if="toastMessage" class="toast" role="status"><Check :size="17" />{{ toastMessage }}</div></Transition>
+    <div class="toast-stack" aria-live="polite" aria-atomic="false">
+      <TransitionGroup name="toast">
+        <div v-for="toast in toasts" :key="toast.id" class="toast" :class="`toast-${toast.tone}`" :role="toast.tone === 'error' ? 'alert' : 'status'">
+          <Check v-if="toast.tone === 'success'" :size="17" />
+          <TriangleAlert v-else-if="toast.tone === 'warning'" :size="17" />
+          <CircleX v-else :size="17" />
+          <span>{{ toast.message }}</span>
+        </div>
+      </TransitionGroup>
+    </div>
   </div>
 </template>

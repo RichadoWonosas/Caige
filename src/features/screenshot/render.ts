@@ -1,4 +1,4 @@
-import type { CharacterCategory, QuestionStatus } from '../../domain/game'
+import type { CharacterCategory, PlayerStatus, QuestionStatus } from '../../domain/game'
 import type { RevealedCharacter } from '../../domain/reveal'
 import { classifyCharacter } from '../../domain/classify'
 
@@ -8,11 +8,15 @@ export interface BoardSnapshot {
   theme: 'light' | 'dark'
   themeHue: number
   rules: string
+  appliedRules?: string[]
   nextPlayer?: string
+  players?: Array<{ name: string; status: PlayerStatus; statusLabel: string }>
   guessedCharacters: string[]
   categories: Array<{ key: CharacterCategory; label: string; enabled: boolean }>
   labels: {
     rules: string
+    appliedRules: string
+    players: string
     categories: string
     guesses: string
     guessOrder: string
@@ -50,6 +54,11 @@ function download(blob: Blob, filename: string) {
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
+function imageFilename() {
+  const stamp = new Date().toISOString().replace(/[:T]/gu, '-').slice(0, 16)
+  return `caige-${stamp}.png`
+}
+
 function wrapLines(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
   const paragraphs = (text || '').split(/\r?\n/u)
   const lines: string[] = []
@@ -71,7 +80,14 @@ function wrapLines(ctx: CanvasRenderingContext2D, text: string, maxWidth: number
   return lines.length ? lines : ['']
 }
 
-export async function copyBoardImage(snapshot: BoardSnapshot): Promise<'copied' | 'downloaded'> {
+function fitText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string {
+  if (ctx.measureText(text).width <= maxWidth) return text
+  const characters = Array.from(text)
+  while (characters.length && ctx.measureText(`${characters.join('')}…`).width > maxWidth) characters.pop()
+  return `${characters.join('')}…`
+}
+
+async function renderBoardImage(snapshot: BoardSnapshot): Promise<Blob> {
   const width = 1280
   const margin = 58
   const contentWidth = width - margin * 2
@@ -84,6 +100,10 @@ export async function copyBoardImage(snapshot: BoardSnapshot): Promise<'copied' 
 
   measuringContext.font = '500 13pt ui-sans-serif, system-ui, sans-serif'
   const ruleLines = wrapLines(measuringContext, snapshot.rules.trim() || '—', contentWidth - 32)
+  measuringContext.font = '650 11.5pt ui-sans-serif, system-ui, sans-serif'
+  const appliedRuleLines = snapshot.appliedRules?.length
+    ? wrapLines(measuringContext, snapshot.appliedRules.map((rule) => `• ${rule}`).join('   '), contentWidth - 32)
+    : []
   measuringContext.font = '500 11.5pt ui-sans-serif, system-ui, sans-serif'
   const historyLines = wrapLines(measuringContext, snapshot.history || '—', contentWidth - 32)
   measuringContext.font = '800 14pt ui-monospace, "Noto Sans Mono", monospace'
@@ -96,12 +116,15 @@ export async function copyBoardImage(snapshot: BoardSnapshot): Promise<'copied' 
     return { characterRows, metaLines, height: 34 + characterRows * (tileSize + tileGap) + (metaLines.length ? 8 + metaLines.length * 22 : 8) }
   })
   const rulesHeight = 50 + ruleLines.length * 27
+  const appliedRulesHeight = appliedRuleLines.length ? 46 + appliedRuleLines.length * 24 : 0
   const nextPlayerHeight = snapshot.nextPlayer ? 54 : 0
+  const playerRows = snapshot.players?.length ? Math.ceil(snapshot.players.length / 4) : 0
+  const playersHeight = playerRows ? 38 + playerRows * 42 : 0
   const legendHeight = 112
   const guessesHeight = 64 + (guessedLines.length - 1) * 26
   const questionsHeight = questionLayouts.reduce((total, value) => total + value.height, 0)
   const historyHeight = 58 + historyLines.length * 23
-  const height = Math.max(800, 126 + rulesHeight + nextPlayerHeight + legendHeight + guessesHeight + questionsHeight + historyHeight + 52)
+  const height = Math.max(800, 126 + rulesHeight + appliedRulesHeight + nextPlayerHeight + playersHeight + legendHeight + guessesHeight + questionsHeight + historyHeight + 52)
   const scale = Math.min(window.devicePixelRatio || 1, 2)
   const canvas = document.createElement('canvas')
   canvas.width = width * scale
@@ -115,8 +138,8 @@ export async function copyBoardImage(snapshot: BoardSnapshot): Promise<'copied' 
   const accent = `hsl(${snapshot.themeHue} ${dark ? '86% 62%' : '78% 45%'})`
   const accentInk = snapshot.themeHue >= 35 && snapshot.themeHue <= 195 ? 'hsl(222 47% 8%)' : 'white'
   const colors = dark
-    ? { bg: 'hsl(222 47% 8%)', surface: 'hsl(220 30% 12%)', subtle: 'hsl(220 22% 18%)', text: 'hsl(210 40% 96%)', muted: 'hsl(215 18% 70%)', accent, line: 'hsl(218 22% 27%)' }
-    : { bg: 'hsl(48 33% 97%)', surface: 'hsl(0 0% 100%)', subtle: 'hsl(45 24% 93%)', text: 'hsl(222 47% 11%)', muted: 'hsl(218 12% 42%)', accent, line: 'hsl(40 18% 82%)' }
+    ? { bg: 'hsl(222 47% 8%)', surface: 'hsl(220 30% 12%)', subtle: 'hsl(220 22% 18%)', text: 'hsl(210 40% 96%)', muted: 'hsl(215 18% 70%)', accent, line: 'hsl(218 22% 27%)', success: 'hsl(145 58% 53%)' }
+    : { bg: 'hsl(48 33% 97%)', surface: 'hsl(0 0% 100%)', subtle: 'hsl(45 24% 93%)', text: 'hsl(222 47% 11%)', muted: 'hsl(218 12% 42%)', accent, line: 'hsl(40 18% 82%)', success: 'hsl(145 54% 36%)' }
 
   ctx.fillStyle = colors.bg
   ctx.fillRect(0, 0, width, height)
@@ -143,6 +166,18 @@ export async function copyBoardImage(snapshot: BoardSnapshot): Promise<'copied' 
   ruleLines.forEach((line, index) => ctx.fillText(line, margin + 16, y + 51 + index * 27))
   y += rulesHeight
 
+  if (appliedRuleLines.length) {
+    ctx.fillStyle = colors.subtle
+    ctx.fillRect(margin, y, contentWidth, appliedRulesHeight - 8)
+    ctx.fillStyle = colors.muted
+    ctx.font = '800 11pt ui-sans-serif, system-ui, sans-serif'
+    ctx.fillText(snapshot.labels.appliedRules, margin + 16, y + 22)
+    ctx.fillStyle = colors.text
+    ctx.font = '650 11.5pt ui-sans-serif, system-ui, sans-serif'
+    appliedRuleLines.forEach((line, index) => ctx.fillText(line, margin + 16, y + 48 + index * 24))
+    y += appliedRulesHeight
+  }
+
   if (snapshot.nextPlayer) {
     ctx.fillStyle = colors.accent
     ctx.fillRect(margin, y, contentWidth, 44)
@@ -150,6 +185,35 @@ export async function copyBoardImage(snapshot: BoardSnapshot): Promise<'copied' 
     ctx.font = '800 15pt ui-sans-serif, system-ui, sans-serif'
     ctx.fillText(snapshot.nextPlayer, margin + 16, y + 30)
     y += nextPlayerHeight
+  }
+
+  if (snapshot.players?.length) {
+    ctx.fillStyle = colors.muted
+    ctx.font = '800 11pt ui-sans-serif, system-ui, sans-serif'
+    ctx.fillText(snapshot.labels.players, margin, y + 16)
+    const playerGap = 8
+    const playerColumns = Math.min(4, snapshot.players.length)
+    const playerWidth = (contentWidth - playerGap * (playerColumns - 1)) / playerColumns
+    snapshot.players.forEach((player, index) => {
+      const column = index % playerColumns
+      const row = Math.floor(index / playerColumns)
+      const x = margin + column * (playerWidth + playerGap)
+      const playerY = y + 28 + row * 42
+      const statusColor = player.status === 'winner' ? colors.accent : player.status === 'active' ? colors.success : colors.muted
+      ctx.fillStyle = colors.surface
+      ctx.fillRect(x, playerY, playerWidth, 34)
+      ctx.strokeStyle = colors.line
+      ctx.strokeRect(x + 0.5, playerY + 0.5, playerWidth - 1, 33)
+      ctx.fillStyle = statusColor
+      ctx.fillRect(x, playerY, 5, 34)
+      ctx.beginPath()
+      ctx.arc(x + 19, playerY + 17, 4, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.fillStyle = player.status === 'failed' ? colors.muted : colors.text
+      ctx.font = '750 11pt ui-sans-serif, system-ui, sans-serif'
+      ctx.fillText(fitText(ctx, `${player.name} · ${player.statusLabel}`, playerWidth - 38), x + 30, playerY + 23)
+    })
+    y += playersHeight
   }
 
   ctx.fillStyle = colors.muted
@@ -248,13 +312,21 @@ export async function copyBoardImage(snapshot: BoardSnapshot): Promise<'copied' 
   ctx.font = '500 11.5pt ui-sans-serif, system-ui, sans-serif'
   historyLines.forEach((line, index) => ctx.fillText(line, margin + 16, y + 64 + index * 23))
 
-  const blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob((value) => value ? resolve(value) : reject(new Error('png-failed')), 'image/png'))
+  return await new Promise<Blob>((resolve, reject) => canvas.toBlob((value) => value ? resolve(value) : reject(new Error('png-failed')), 'image/png'))
+}
+
+export async function copyBoardImage(snapshot: BoardSnapshot): Promise<'copied' | 'downloaded'> {
+  const blob = await renderBoardImage(snapshot)
   if (window.isSecureContext && navigator.clipboard && 'ClipboardItem' in window) {
     try {
       await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
       return 'copied'
     } catch { /* download fallback */ }
   }
-  download(blob, `caige-${new Date().toISOString().slice(0, 10)}.png`)
+  download(blob, imageFilename())
   return 'downloaded'
+}
+
+export async function saveBoardImage(snapshot: BoardSnapshot): Promise<void> {
+  download(await renderBoardImage(snapshot), imageFilename())
 }

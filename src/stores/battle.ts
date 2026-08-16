@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { createPlayer, createQuestion, type BattleRoyaleState, type GameAction } from '../domain/game'
-import { standardRuleset } from '../domain/rulesets/standard-v1'
+import { DEFAULT_STANDARD_RULESET_CONFIG, standardRuleset } from '../domain/rulesets/standard-v1'
 import { byCreatedAt, shuffled } from '../domain/order'
 import { toCodePoints } from '../domain/normalize'
 
@@ -19,7 +19,7 @@ function initialState(): BattleRoyaleState {
     phase: 'setup',
     rulesetId: 'standard-v1',
     rulesetVersion: 1,
-    rulesetConfig: { allowSelfTarget: false, letterScope: 'all', consumeTurnOnMiss: true, autoWinner: true },
+    rulesetConfig: { ...DEFAULT_STANDARD_RULESET_CONFIG },
     sessionRules: '',
   }
 }

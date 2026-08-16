@@ -13,12 +13,13 @@ const zhHans = {
   },
   player: { name: '玩家名', placeholder: '输入玩家名', status: { active: '存活', failed: '失败', winner: '胜者' }, questionCount: '{count} 道题' },
   question: {
-    title: '题目名', titlePlaceholder: '例如：片头曲', source: '曲目来源', sourcePlaceholder: '例如：动画、游戏或专辑名', sourceUnknown: '来源未填写',
-    answer: '曲名原文', answerPlaceholder: '最多 100 个字符', author: '出题者', status: { active: '竞猜中', solved: '已猜出' },
+    title: '题目名', titlePlaceholder: '例如：片头曲', source: '曲目来源', sourcePlaceholder: '选填，例如：动画、游戏或专辑名', sourceUnknown: '来源未填写',
+    answer: '曲名原文', answerPlaceholder: '最多 256 个字符', author: '出题者', status: { active: '竞猜中', solved: '已猜出' },
   },
   rules: {
     allowSelf: '允许猜自己的题', globalLetters: '开字母作用于全部可猜题目', targetLetters: '开字母时指定题目', consumeMiss: '猜错也消耗回合',
-    autoWinner: '最后一位存活者自动获胜', localConfig: '这些选择随存档保存，不会写死在字符引擎里。',
+    disallowSelf: '不允许猜自己的题', keepTurnOnMiss: '猜错不消耗回合', extraTurnOnCorrect: '猜中全曲后获得额外回合', noExtraTurnOnCorrect: '猜中全曲后不获得额外回合',
+    autoWinner: '最后一位存活者自动获胜', manualWinner: '不自动判定最后一位存活者获胜', rulesetVersion: 'standard-v{version}', localConfig: '这些选择随存档保存，不会写死在字符引擎里。',
   },
   game: {
     title: '对局舞台', currentTurn: '现在轮到', nextPlayer: '下一位猜测者', waiting: '完成设置后开始对局', finished: '对局已结束', start: '开始对局',
@@ -41,7 +42,7 @@ const zhHans = {
   },
   actions: {
     gameActions: '对局操作', addPlayer: '添加玩家', addQuestion: '添加题目', randomPlayers: '随机玩家', randomQuestions: '随机题目',
-    restorePlayers: '恢复玩家顺序', restoreQuestions: '恢复题目顺序', undo: '撤销上一步', reset: '重置本局', copyImage: '复制战况图',
+    restorePlayers: '恢复玩家顺序', restoreQuestions: '恢复题目顺序', undo: '撤销上一步', reset: '重置本局', copyImage: '复制战况图', copyImageHint: '点击复制战况图；长按保存 PNG', saveImage: '保存 PNG',
     export: '导出 JSON', import: '导入 JSON', delete: '删除', moveUp: '上移', moveDown: '下移', cancel: '取消', confirm: '确认', close: '关闭', update: '立即更新',
   },
   dialog: {
@@ -49,28 +50,28 @@ const zhHans = {
     undoTitle: '撤销上一步对局操作？', undoBody: '将恢复执行该操作前的题目、回合、猜测和控制状态。',
     deletePlayerTitle: '删除玩家及其题目？', deletePlayerBody: '该玩家关联的题目也会一并删除，此操作不能撤销。',
     importTitle: '导入会覆盖当前数据', importBody: '建议先导出备份。确认后将载入所选文件。',
+    saveImageTitle: '保存战况图到本地？', saveImageBody: '将生成当前战况图并下载为 PNG 文件。',
   },
   help: {
     title: '主持人快速指南', intro: 'Caige 是一款完全本地运行的主持人工具。没有账号、没有云同步，答案只保存在当前设备。',
-    step1Title: '1 · 准备题目', step1: '猜歌吃鸡中，每位玩家至少出 1 道题；出你字母则只需要题目。填写曲名原文、曲目来源和本局规则。',
+    step1Title: '1 · 准备题目', step1: '猜歌吃鸡中，每位玩家至少出 1 道题；出你字母则只需要题目。填写曲名原文和本局规则，曲目来源可选。',
     step2Title: '2 · 推进对局', step2: '开字母会按 Excel 的单向 Alias 表展开；猜测全曲时由主持人直接选择猜对或猜错。',
-    step3Title: '3 · 主持人控制', step3: '字符底色始终提示类别；点击单个字符格可强制显示或隐藏。误操作可通过“撤销上一步”恢复。',
+    step3Title: '3 · 主持人控制', step3: '字符底色始终提示类别；点击单个字符格可强制显示或隐藏。误操作可撤销；长按“复制战况图”可保存 PNG。',
     shortcuts: '快捷键', privacy: '战况图会保护未完成题目的答案；能访问浏览器存储或开发者工具的人仍可能读取原始数据。',
-    keyG: '随机题目序列', keyR: '恢复题目序列', keyC: '重置本局', keyF: '复制战况图',
+    keyG: '随机题目序列', keyR: '恢复题目序列', keyC: '重置本局', keyF: '点击复制；长按按钮保存 PNG',
   },
   toast: {
-    saved: '已保存到此设备', restored: '已恢复上次对局', exported: '备份已下载', imported: '备份已导入', copied: '战况图已复制',
+    saved: '已保存到此设备', restored: '已恢复上次对局', exported: '备份已下载', imported: '备份已导入', copied: '战况图已复制', imageSaved: '战况图已保存到本地',
     downloaded: '浏览器不支持图片剪贴板，已下载 PNG', reset: '当前模式已重置', undone: '已撤销上一步对局操作', shuffled: '题目序列已随机',
     restoredOrder: '已恢复题目创建顺序', update: '有新版本可用', invalid: '请输入 1 个有效字符', invalidTarget: '请选择一道仍在竞猜中的题目',
     miss: '主持人判定未猜中，行动已记录', hit: '命中！状态板已更新', solved: '主持人判定猜中，题目已完成', started: '对局开始',
   },
   errors: {
     generic: '操作没有完成，请重试。', storage: '自动保存失败；当前内存中的对局仍可继续。', import: '文件不是有效的 Caige v1 备份。',
-    'players.min': '至少需要 2 位玩家。', 'player.name': '每位玩家都需要名字。', 'player.question': '每位玩家至少需要 1 道题。',
-    'question.required': '曲目来源和曲名原文不能为空。', 'question.length': '曲名不能超过 100 个字符。',
-    'question.author': '每道题都必须关联现有玩家。', 'question.target': '指定题目玩法至少需要 1 道题。',
+    players: { min: '至少需要 2 位玩家。' }, player: { name: '每位玩家都需要名字。', question: '每位玩家至少需要 1 道题。' },
+    question: { required: '曲名原文不能为空。', length: '曲名原文不能超过 256 个字符。', author: '每道题都必须关联现有玩家。', target: '指定题目玩法至少需要 1 道题。' },
   },
-  screenshot: { rules: '本局规则', categories: '字符类型', guesses: '已开字符', guessOrder: 'A–Z / 0–9 / Unicode', history: '猜测历史' },
+  screenshot: { rules: '本局规则', appliedRules: '当前规则选项', players: '玩家存活情况', categories: '字符类型', guesses: '已开字符', guessOrder: 'A–Z / 0–9 / Unicode', history: '猜测历史' },
   pwa: { offlineReady: 'Caige 已可离线使用', updateAvailable: '有新版本。更新前会先保存当前对局。', installReady: '安装 Caige 到本机', installWaiting: 'PWA 正在准备或当前浏览器不提供安装提示', installPreparing: '开发版 Service Worker 已启用；刷新一次后可再次检查安装按钮', installUnavailable: '当前浏览器未提供安装提示；也可以使用浏览器菜单中的“安装应用”', installDismissed: '已取消安装', installed: 'Caige 已安装到本机' },
 }
 
@@ -90,12 +91,13 @@ const zhHant = defineMessages({
   },
   player: { name: '玩家名稱', placeholder: '輸入玩家名稱', status: { active: '存活', failed: '失敗', winner: '勝者' }, questionCount: '{count} 道題' },
   question: {
-    title: '題目名稱', titlePlaceholder: '例如：片頭曲', source: '曲目來源', sourcePlaceholder: '例如：動畫、遊戲或專輯名稱', sourceUnknown: '未填寫來源',
-    answer: '曲名原文', answerPlaceholder: '最多 100 個字元', author: '出題者', status: { active: '競猜中', solved: '已猜出' },
+    title: '題目名稱', titlePlaceholder: '例如：片頭曲', source: '曲目來源', sourcePlaceholder: '選填，例如：動畫、遊戲或專輯名稱', sourceUnknown: '未填寫來源',
+    answer: '曲名原文', answerPlaceholder: '最多 256 個字元', author: '出題者', status: { active: '競猜中', solved: '已猜出' },
   },
   rules: {
     allowSelf: '允許猜自己的題目', globalLetters: '開字母作用於全部可猜題目', targetLetters: '開字母時指定題目', consumeMiss: '猜錯也消耗回合',
-    autoWinner: '最後一位存活者自動獲勝', localConfig: '這些選項會隨存檔儲存，不會寫死在字元引擎中。',
+    disallowSelf: '不允許猜自己的題目', keepTurnOnMiss: '猜錯不消耗回合', extraTurnOnCorrect: '猜中全曲後獲得額外回合', noExtraTurnOnCorrect: '猜中全曲後不獲得額外回合',
+    autoWinner: '最後一位存活者自動獲勝', manualWinner: '不自動判定最後一位存活者獲勝', rulesetVersion: 'standard-v{version}', localConfig: '這些選項會隨存檔儲存，不會寫死在字元引擎中。',
   },
   game: {
     title: '對局舞台', currentTurn: '現在輪到', nextPlayer: '下一位猜測者', waiting: '完成設定後開始對局', finished: '對局已結束', start: '開始對局',
@@ -118,7 +120,7 @@ const zhHant = defineMessages({
   },
   actions: {
     gameActions: '對局操作', addPlayer: '新增玩家', addQuestion: '新增題目', randomPlayers: '隨機玩家', randomQuestions: '隨機題目',
-    restorePlayers: '恢復玩家順序', restoreQuestions: '恢復題目順序', undo: '復原上一步', reset: '重設本局', copyImage: '複製戰況圖',
+    restorePlayers: '恢復玩家順序', restoreQuestions: '恢復題目順序', undo: '復原上一步', reset: '重設本局', copyImage: '複製戰況圖', copyImageHint: '點擊複製戰況圖；長按儲存 PNG', saveImage: '儲存 PNG',
     export: '匯出 JSON', import: '匯入 JSON', delete: '刪除', moveUp: '上移', moveDown: '下移', cancel: '取消', confirm: '確認', close: '關閉', update: '立即更新',
   },
   dialog: {
@@ -126,28 +128,28 @@ const zhHant = defineMessages({
     undoTitle: '復原上一步對局操作？', undoBody: '將恢復執行該操作前的題目、回合、猜測和控制狀態。',
     deletePlayerTitle: '刪除玩家及其題目？', deletePlayerBody: '該玩家關聯的題目也會一併刪除，此操作無法復原。',
     importTitle: '匯入會覆蓋目前資料', importBody: '建議先匯出備份。確認後將載入所選檔案。',
+    saveImageTitle: '將戰況圖儲存到本機？', saveImageBody: '將產生目前的戰況圖並下載為 PNG 檔案。',
   },
   help: {
     title: '主持人快速指南', intro: 'Caige 是一款完全在本機執行的主持人工具。沒有帳號、沒有雲端同步，答案只儲存在目前裝置。',
-    step1Title: '1 · 準備題目', step1: '猜歌吃雞中，每位玩家至少出 1 道題；出你字母則只需要題目。填寫曲名原文、曲目來源和本局規則。',
+    step1Title: '1 · 準備題目', step1: '猜歌吃雞中，每位玩家至少出 1 道題；出你字母則只需要題目。填寫曲名原文和本局規則，曲目來源可選填。',
     step2Title: '2 · 推進對局', step2: '開字母會依照 Excel 的單向 Alias 表展開；猜測全曲時由主持人直接選擇猜對或猜錯。',
-    step3Title: '3 · 主持人控制', step3: '字元底色始終提示類別；點擊單個字元格可強制顯示或隱藏。誤操作可透過「復原上一步」恢復。',
+    step3Title: '3 · 主持人控制', step3: '字元底色始終提示類別；點擊單個字元格可強制顯示或隱藏。誤操作可復原；長按「複製戰況圖」可儲存 PNG。',
     shortcuts: '快捷鍵', privacy: '戰況圖會保護未完成題目的答案；能存取瀏覽器儲存空間或開發者工具的人仍可能讀取原始資料。',
-    keyG: '隨機題目順序', keyR: '恢復題目順序', keyC: '重設本局', keyF: '複製戰況圖',
+    keyG: '隨機題目順序', keyR: '恢復題目順序', keyC: '重設本局', keyF: '點擊複製；長按按鈕儲存 PNG',
   },
   toast: {
-    saved: '已儲存至此裝置', restored: '已恢復上次對局', exported: '備份已下載', imported: '備份已匯入', copied: '戰況圖已複製',
+    saved: '已儲存至此裝置', restored: '已恢復上次對局', exported: '備份已下載', imported: '備份已匯入', copied: '戰況圖已複製', imageSaved: '戰況圖已儲存至本機',
     downloaded: '瀏覽器不支援圖片剪貼簿，已下載 PNG', reset: '目前模式已重設', undone: '已復原上一步對局操作', shuffled: '題目順序已隨機排列',
     restoredOrder: '已恢復題目建立順序', update: '有新版本可用', invalid: '請輸入 1 個有效字元', invalidTarget: '請選擇一道仍在競猜中的題目',
     miss: '主持人判定未猜中，行動已記錄', hit: '命中！狀態板已更新', solved: '主持人判定猜中，題目已完成', started: '對局開始',
   },
   errors: {
     generic: '操作未完成，請再試一次。', storage: '自動儲存失敗；目前記憶體中的對局仍可繼續。', import: '檔案不是有效的 Caige v1 備份。',
-    'players.min': '至少需要 2 位玩家。', 'player.name': '每位玩家都需要名稱。', 'player.question': '每位玩家至少需要 1 道題。',
-    'question.required': '曲目來源和曲名原文不能為空。', 'question.length': '曲名不能超過 100 個字元。',
-    'question.author': '每道題都必須關聯現有玩家。', 'question.target': '指定題目玩法至少需要 1 道題。',
+    players: { min: '至少需要 2 位玩家。' }, player: { name: '每位玩家都需要名稱。', question: '每位玩家至少需要 1 道題。' },
+    question: { required: '曲名原文不能為空。', length: '曲名原文不能超過 256 個字元。', author: '每道題都必須關聯現有玩家。', target: '指定題目玩法至少需要 1 道題。' },
   },
-  screenshot: { rules: '本局規則', categories: '字元類型', guesses: '已開字元', guessOrder: 'A–Z / 0–9 / Unicode', history: '猜測歷史' },
+  screenshot: { rules: '本局規則', appliedRules: '目前規則選項', players: '玩家存活狀況', categories: '字元類型', guesses: '已開字元', guessOrder: 'A–Z / 0–9 / Unicode', history: '猜測歷史' },
   pwa: { offlineReady: 'Caige 已可離線使用', updateAvailable: '有新版本。更新前會先儲存目前對局。', installReady: '將 Caige 安裝到本機', installWaiting: 'PWA 正在準備，或目前瀏覽器未提供安裝提示', installPreparing: '開發版 Service Worker 已啟用；重新整理一次後可再次檢查安裝按鈕', installUnavailable: '目前瀏覽器未提供安裝提示；也可使用瀏覽器選單中的「安裝應用程式」', installDismissed: '已取消安裝', installed: 'Caige 已安裝到本機' },
 })
 
@@ -163,12 +165,13 @@ const enUS = defineMessages({
   },
   player: { name: 'Player name', placeholder: 'Enter a player name', status: { active: 'Alive', failed: 'Failed', winner: 'Winner' }, questionCount: '{count} questions' },
   question: {
-    title: 'Question name', titlePlaceholder: 'e.g. Opening theme', source: 'Song source', sourcePlaceholder: 'Anime, game, or album', sourceUnknown: 'Source not provided',
-    answer: 'Original song title', answerPlaceholder: 'Up to 100 characters', author: 'Author', status: { active: 'In play', solved: 'Solved' },
+    title: 'Question name', titlePlaceholder: 'e.g. Opening theme', source: 'Song source', sourcePlaceholder: 'Optional: anime, game, or album', sourceUnknown: 'Source not provided',
+    answer: 'Original song title', answerPlaceholder: 'Up to 256 characters', author: 'Author', status: { active: 'In play', solved: 'Solved' },
   },
   rules: {
     allowSelf: 'Allow players to target their own questions', globalLetters: 'Revealed characters apply to all eligible questions', targetLetters: 'Choose a target when revealing a character',
-    consumeMiss: 'A miss consumes the turn', autoWinner: 'Last active player wins automatically', localConfig: 'These choices are saved with the game, not hard-coded into the character engine.',
+    consumeMiss: 'A miss consumes the turn', disallowSelf: 'Players cannot target their own questions', keepTurnOnMiss: 'A miss does not consume the turn', extraTurnOnCorrect: 'Grant an extra turn after a correct full-song guess', noExtraTurnOnCorrect: 'Do not grant an extra turn after a correct full-song guess',
+    autoWinner: 'Last active player wins automatically', manualWinner: 'Do not automatically declare the last active player the winner', rulesetVersion: 'standard-v{version}', localConfig: 'These choices are saved with the game, not hard-coded into the character engine.',
   },
   game: {
     title: 'Game stage', currentTurn: 'Up now', nextPlayer: 'Next guesser', waiting: 'Finish setup to start', finished: 'Game finished', start: 'Start game',
@@ -191,7 +194,7 @@ const enUS = defineMessages({
   },
   actions: {
     gameActions: 'Game actions', addPlayer: 'Add player', addQuestion: 'Add question', randomPlayers: 'Shuffle players', randomQuestions: 'Shuffle questions',
-    restorePlayers: 'Restore player order', restoreQuestions: 'Restore question order', undo: 'Undo last action', reset: 'Reset game', copyImage: 'Copy game image',
+    restorePlayers: 'Restore player order', restoreQuestions: 'Restore question order', undo: 'Undo last action', reset: 'Reset game', copyImage: 'Copy game image', copyImageHint: 'Click to copy the game image; press and hold to save a PNG', saveImage: 'Save PNG',
     export: 'Export JSON', import: 'Import JSON', delete: 'Delete', moveUp: 'Move up', moveDown: 'Move down', cancel: 'Cancel', confirm: 'Confirm', close: 'Close', update: 'Update now',
   },
   dialog: {
@@ -199,28 +202,28 @@ const enUS = defineMessages({
     undoTitle: 'Undo the last game action?', undoBody: 'Questions, turn, guesses, and controls will return to their previous state.',
     deletePlayerTitle: 'Delete this player and their questions?', deletePlayerBody: 'Questions linked to this player will also be deleted. This cannot be undone.',
     importTitle: 'Importing will replace current data', importBody: 'Export a backup first if needed. Confirm to load the selected file.',
+    saveImageTitle: 'Save the game image to this device?', saveImageBody: 'A PNG of the current game board will be generated and downloaded.',
   },
   help: {
     title: 'Host quick guide', intro: 'Caige is a fully local host tool. There are no accounts or cloud sync; answers stay on this device.',
-    step1Title: '1 · Prepare questions', step1: 'In Song Battle Royale, every player contributes at least one question. Give Your Letters only needs questions. Enter the original title, source, and round rules.',
+    step1Title: '1 · Prepare questions', step1: 'In Song Battle Royale, every player contributes at least one question. Give Your Letters only needs questions. Enter the original title and round rules; the song source is optional.',
     step2Title: '2 · Run the game', step2: 'Character reveals expand through the one-way Excel Alias table. For a full-song guess, the host directly chooses Correct or Incorrect.',
-    step3Title: '3 · Host controls', step3: 'Tile backgrounds always show character categories. Click an individual tile to force it shown or hidden. Undo restores accidental game actions.',
+    step3Title: '3 · Host controls', step3: 'Tile backgrounds always show character categories. Click a tile to force it shown or hidden. Undo restores mistakes; press and hold Copy game image to save a PNG.',
     shortcuts: 'Shortcuts', privacy: 'The game image protects answers to unfinished questions. Anyone with access to browser storage or developer tools may still read the raw data.',
-    keyG: 'Shuffle question order', keyR: 'Restore question order', keyC: 'Reset game', keyF: 'Copy game image',
+    keyG: 'Shuffle question order', keyR: 'Restore question order', keyC: 'Reset game', keyF: 'Click to copy; hold the button to save a PNG',
   },
   toast: {
-    saved: 'Saved on this device', restored: 'Previous game restored', exported: 'Backup downloaded', imported: 'Backup imported', copied: 'Game image copied',
+    saved: 'Saved on this device', restored: 'Previous game restored', exported: 'Backup downloaded', imported: 'Backup imported', copied: 'Game image copied', imageSaved: 'Game image saved to this device',
     downloaded: 'Image clipboard is unavailable; a PNG was downloaded', reset: 'Current mode reset', undone: 'Last game action undone', shuffled: 'Question order shuffled',
     restoredOrder: 'Question creation order restored', update: 'A new version is available', invalid: 'Enter 1 valid character', invalidTarget: 'Select a question that is still in play',
     miss: 'Host marked it incorrect; the action was recorded', hit: 'Hit! The status board was updated', solved: 'Host marked it correct; the question is complete', started: 'Game started',
   },
   errors: {
     generic: 'The operation did not complete. Try again.', storage: 'Autosave failed; the in-memory game can continue.', import: 'This file is not a valid Caige v1 backup.',
-    'players.min': 'At least 2 players are required.', 'player.name': 'Every player needs a name.', 'player.question': 'Every player needs at least 1 question.',
-    'question.required': 'Song source and original title are required.', 'question.length': 'The song title cannot exceed 100 characters.',
-    'question.author': 'Every question must be linked to an existing player.', 'question.target': 'Targeted-character mode requires at least 1 question.',
+    players: { min: 'At least 2 players are required.' }, player: { name: 'Every player needs a name.', question: 'Every player needs at least 1 question.' },
+    question: { required: 'The original song title is required.', length: 'The original song title cannot exceed 256 characters.', author: 'Every question must be linked to an existing player.', target: 'Targeted-character mode requires at least 1 question.' },
   },
-  screenshot: { rules: 'ROUND RULES', categories: 'CHARACTER TYPES', guesses: 'REVEALED CHARACTERS', guessOrder: 'A–Z / 0–9 / Unicode', history: 'GUESS HISTORY' },
+  screenshot: { rules: 'ROUND RULES', appliedRules: 'CURRENT RULE OPTIONS', players: 'PLAYER SURVIVAL', categories: 'CHARACTER TYPES', guesses: 'REVEALED CHARACTERS', guessOrder: 'A–Z / 0–9 / Unicode', history: 'GUESS HISTORY' },
   pwa: { offlineReady: 'Caige is ready offline', updateAvailable: 'A new version is available. The current game will be saved before updating.', installReady: 'Install Caige on this device', installWaiting: 'The PWA is preparing or this browser does not expose an install prompt', installPreparing: 'The development service worker is enabled. Refresh once, then check the install button again.', installUnavailable: 'This browser did not expose an install prompt. You can also use its Install app menu.', installDismissed: 'Installation canceled', installed: 'Caige was installed on this device' },
 })
 
@@ -236,12 +239,13 @@ const jaJP = defineMessages({
   },
   player: { name: 'プレイヤー名', placeholder: 'プレイヤー名を入力', status: { active: '生存', failed: '脱落', winner: '勝者' }, questionCount: '{count} 問' },
   question: {
-    title: '問題名', titlePlaceholder: '例：オープニング曲', source: '曲の出典', sourcePlaceholder: 'アニメ・ゲーム・アルバム名', sourceUnknown: '出典未入力',
-    answer: '曲名原文', answerPlaceholder: '100文字以内', author: '出題者', status: { active: '回答受付中', solved: '正解済み' },
+    title: '問題名', titlePlaceholder: '例：オープニング曲', source: '曲の出典', sourcePlaceholder: '任意：アニメ・ゲーム・アルバム名', sourceUnknown: '出典未入力',
+    answer: '曲名原文', answerPlaceholder: '256文字以内', author: '出題者', status: { active: '回答受付中', solved: '正解済み' },
   },
   rules: {
     allowSelf: '自分の問題への回答を許可', globalLetters: '開示した文字を回答可能な全問題に適用', targetLetters: '文字を開示するときに問題を指定',
-    consumeMiss: '不正解でもターンを消費', autoWinner: '最後の生存者を自動的に勝者にする', localConfig: 'これらの設定はゲームと一緒に保存され、文字エンジンには固定されません。',
+    consumeMiss: '不正解でもターンを消費', disallowSelf: '自分の問題への回答を許可しない', keepTurnOnMiss: '不正解ではターンを消費しない', extraTurnOnCorrect: '曲名を正解したら追加ターンを獲得', noExtraTurnOnCorrect: '曲名を正解しても追加ターンを獲得しない',
+    autoWinner: '最後の生存者を自動的に勝者にする', manualWinner: '最後の生存者を自動的に勝者にしない', rulesetVersion: 'standard-v{version}', localConfig: 'これらの設定はゲームと一緒に保存され、文字エンジンには固定されません。',
   },
   game: {
     title: 'ゲームステージ', currentTurn: '現在の回答者', nextPlayer: '次の回答者', waiting: '設定を完了して開始', finished: 'ゲーム終了', start: 'ゲーム開始',
@@ -264,7 +268,7 @@ const jaJP = defineMessages({
   },
   actions: {
     gameActions: 'ゲーム操作', addPlayer: 'プレイヤー追加', addQuestion: '問題追加', randomPlayers: 'プレイヤーをシャッフル', randomQuestions: '問題をシャッフル',
-    restorePlayers: 'プレイヤー順を戻す', restoreQuestions: '問題順を戻す', undo: '1手戻す', reset: 'リセット', copyImage: '戦況画像をコピー',
+    restorePlayers: 'プレイヤー順を戻す', restoreQuestions: '問題順を戻す', undo: '1手戻す', reset: 'リセット', copyImage: '戦況画像をコピー', copyImageHint: 'クリックで戦況画像をコピー、長押しで PNG を保存', saveImage: 'PNGを保存',
     export: 'JSONを書き出す', import: 'JSONを読み込む', delete: '削除', moveUp: '上へ', moveDown: '下へ', cancel: 'キャンセル', confirm: '確認', close: '閉じる', update: '今すぐ更新',
   },
   dialog: {
@@ -272,28 +276,28 @@ const jaJP = defineMessages({
     undoTitle: '直前のゲーム操作を取り消しますか？', undoBody: '問題・ターン・回答・制御を操作前の状態に戻します。',
     deletePlayerTitle: 'プレイヤーとその問題を削除しますか？', deletePlayerBody: 'このプレイヤーに関連する問題も削除されます。この操作は取り消せません。',
     importTitle: '読み込むと現在のデータが上書きされます', importBody: '必要なら先にバックアップを書き出してください。確認すると選択したファイルを読み込みます。',
+    saveImageTitle: '戦況画像をこの端末に保存しますか？', saveImageBody: '現在の戦況画像を生成し、PNG ファイルとしてダウンロードします。',
   },
   help: {
     title: '司会者クイックガイド', intro: 'Caige は完全にローカルで動作する司会者用ツールです。アカウントもクラウド同期もなく、答えはこの端末だけに保存されます。',
-    step1Title: '1 · 問題を準備', step1: '曲当てバトルロイヤルでは各プレイヤーが1問以上出題します。「文字をどうぞ」では問題だけを用意します。曲名原文・出典・今回のルールを入力してください。',
+    step1Title: '1 · 問題を準備', step1: '曲当てバトルロイヤルでは各プレイヤーが1問以上出題します。「文字をどうぞ」では問題だけを用意します。曲名原文と今回のルールを入力してください。出典は任意です。',
     step2Title: '2 · ゲームを進行', step2: '文字の開示は Excel の一方向 Alias 表に従って展開されます。曲名回答は司会者が正解または不正解を直接選択します。',
-    step3Title: '3 · 司会者の操作', step3: '背景色は常に文字種を示します。個別の文字タイルをクリックして強制表示・非表示を切り替えられます。誤操作は「1手戻す」で復元できます。',
+    step3Title: '3 · 司会者の操作', step3: '背景色は常に文字種を示します。文字タイルをクリックして強制表示・非表示を切り替えられます。誤操作は取り消せます。「戦況画像をコピー」を長押しすると PNG を保存できます。',
     shortcuts: 'ショートカット', privacy: '戦況画像では未完了問題の答えを保護します。ブラウザーの保存領域や開発者ツールにアクセスできる人は元データを読める可能性があります。',
-    keyG: '問題順をシャッフル', keyR: '問題順を戻す', keyC: 'ゲームをリセット', keyF: '戦況画像をコピー',
+    keyG: '問題順をシャッフル', keyR: '問題順を戻す', keyC: 'ゲームをリセット', keyF: 'クリックでコピー、長押しで PNG を保存',
   },
   toast: {
-    saved: 'この端末に保存しました', restored: '前回のゲームを復元しました', exported: 'バックアップをダウンロードしました', imported: 'バックアップを読み込みました', copied: '戦況画像をコピーしました',
+    saved: 'この端末に保存しました', restored: '前回のゲームを復元しました', exported: 'バックアップをダウンロードしました', imported: 'バックアップを読み込みました', copied: '戦況画像をコピーしました', imageSaved: '戦況画像をこの端末に保存しました',
     downloaded: '画像クリップボードを利用できないため、PNGをダウンロードしました', reset: '現在のモードをリセットしました', undone: '直前のゲーム操作を取り消しました', shuffled: '問題順をシャッフルしました',
     restoredOrder: '問題の作成順に戻しました', update: '新しいバージョンがあります', invalid: '有効な1文字を入力してください', invalidTarget: '回答受付中の問題を選択してください',
     miss: '司会者が不正解と判定し、操作を記録しました', hit: '一致しました。ステータスを更新しました', solved: '司会者が正解と判定し、問題が完了しました', started: 'ゲームを開始しました',
   },
   errors: {
     generic: '操作を完了できませんでした。もう一度お試しください。', storage: '自動保存に失敗しました。メモリ内のゲームは続行できます。', import: '有効な Caige v1 バックアップではありません。',
-    'players.min': '2人以上のプレイヤーが必要です。', 'player.name': 'すべてのプレイヤーに名前が必要です。', 'player.question': '各プレイヤーに1問以上必要です。',
-    'question.required': '曲の出典と曲名原文を入力してください。', 'question.length': '曲名は100文字以内にしてください。',
-    'question.author': 'すべての問題を既存のプレイヤーに関連付けてください。', 'question.target': '問題指定モードには1問以上必要です。',
+    players: { min: '2人以上のプレイヤーが必要です。' }, player: { name: 'すべてのプレイヤーに名前が必要です。', question: '各プレイヤーに1問以上必要です。' },
+    question: { required: '曲名原文を入力してください。', length: '曲名原文は256文字以内にしてください。', author: 'すべての問題を既存のプレイヤーに関連付けてください。', target: '問題指定モードには1問以上必要です。' },
   },
-  screenshot: { rules: '今回のルール', categories: '文字種', guesses: '開示済み文字', guessOrder: 'A–Z / 0–9 / Unicode', history: '回答履歴' },
+  screenshot: { rules: '今回のルール', appliedRules: '現在のルール設定', players: 'プレイヤー生存状況', categories: '文字種', guesses: '開示済み文字', guessOrder: 'A–Z / 0–9 / Unicode', history: '回答履歴' },
   pwa: { offlineReady: 'Caige をオフラインで使用できます', updateAvailable: '新しいバージョンがあります。更新前に現在のゲームを保存します。', installReady: 'Caige をこの端末にインストール', installWaiting: 'PWA の準備中、またはこのブラウザーではインストール案内を利用できません', installPreparing: '開発用 Service Worker は有効です。一度再読み込みしてからインストールボタンを確認してください。', installUnavailable: 'このブラウザーではインストール案内を利用できません。ブラウザーメニューの「アプリをインストール」も使用できます。', installDismissed: 'インストールをキャンセルしました', installed: 'Caige をこの端末にインストールしました' },
 })
 

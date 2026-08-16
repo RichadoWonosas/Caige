@@ -27,6 +27,14 @@ function cloneState(state: BattleRoyaleState): BattleRoyaleState {
   }
 }
 
+export const DEFAULT_STANDARD_RULESET_CONFIG: StandardRulesetConfig = {
+  allowSelfTarget: false,
+  letterScope: 'all',
+  consumeTurnOnMiss: true,
+  extraTurnOnCorrect: true,
+  autoWinner: true,
+}
+
 export const standardRuleset: GameRuleset<StandardRulesetConfig> = {
   id: 'standard-v1',
   version: 1,
@@ -40,8 +48,8 @@ export const standardRuleset: GameRuleset<StandardRulesetConfig> = {
       if (!questions.length) violations.push({ code: 'player.question', message: `${player.name || '未命名玩家'}至少需要 1 道题` })
     }
     for (const question of state.questions) {
-      if (!question.title.trim() || !question.answer.trim()) violations.push({ code: 'question.required', message: '题目名称和答案不能为空' })
-      if (toCodePoints(question.answer).length > 100) violations.push({ code: 'question.length', message: '答案不能超过 100 个字符' })
+      if (!question.answer.trim()) violations.push({ code: 'question.required', message: '曲名原文不能为空' })
+      if (toCodePoints(question.answer).length > 256) violations.push({ code: 'question.length', message: '曲名原文不能超过 256 个字符' })
       if (!state.players.some((player) => player.id === question.authorPlayerId)) violations.push({ code: 'question.author', message: '题目必须关联现有玩家' })
     }
     if (config.letterScope === 'target' && !state.questions.length) violations.push({ code: 'question.target', message: '指定题目玩法至少需要 1 道题' })
@@ -85,7 +93,7 @@ export const standardRuleset: GameRuleset<StandardRulesetConfig> = {
       result = action.hostJudgement === 'correct' ? 'solved' : 'miss'
     }
 
-    const consumedTurn = result === 'hit' || result === 'solved' || (result === 'miss' && config.consumeTurnOnMiss)
+    const consumedTurn = result === 'hit' || (result === 'solved' && !config.extraTurnOnCorrect) || (result === 'miss' && config.consumeTurnOnMiss)
     next.actionHistory.push({ ...action, result })
     const actionResult: ActionResult = { state: next, result, consumedTurn }
     if (consumedTurn) next.currentActorId = this.getNextActorId(next, actionResult, config)

@@ -64,6 +64,7 @@ export interface StandardRulesetConfig {
   allowSelfTarget: boolean
   letterScope: 'all' | 'target'
   consumeTurnOnMiss: boolean
+  extraTurnOnCorrect: boolean
   autoWinner: boolean
 }
 
