@@ -15,6 +15,7 @@ export const useSettingsStore = defineStore('settings', {
     locale: (localStorage.getItem('caige.locale') || 'zh-Hans') as Locale,
     distinguishCharacterTypes: true,
     visibleCategories: { ...defaultCategories },
+    hideSolvedAfterNextAction: true,
   }),
   actions: {
     setTheme(theme: ThemePreference) {

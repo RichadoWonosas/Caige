@@ -1,6 +1,12 @@
 import type { CharacterCategory, PlayerStatus, QuestionStatus } from '../../domain/game'
 import type { RevealedCharacter } from '../../domain/reveal'
 import { classifyCharacter } from '../../domain/classify'
+import {
+  CATEGORY_COLORS,
+  CATEGORY_INK,
+  DEFAULT_CATEGORY_COLOR,
+  DEFAULT_CATEGORY_INK,
+} from '../../domain/category-presentation'
 
 export interface BoardSnapshot {
   title: string
@@ -12,11 +18,14 @@ export interface BoardSnapshot {
   nextPlayer?: string
   players?: Array<{ name: string; status: PlayerStatus; statusLabel: string }>
   guessedCharacters: string[]
-  categories: Array<{ key: CharacterCategory; label: string; enabled: boolean }>
+  textGuessedCharacters: string[]
+  categories: Array<{ key: CharacterCategory; label: string; textLabel: string; enabled: boolean }>
   labels: {
     rules: string
     appliedRules: string
     players: string
+    nextPlayer: string
+    author: string
     categories: string
     guesses: string
     guessOrder: string
@@ -28,21 +37,19 @@ export interface BoardSnapshot {
     source: string
     author?: string
     status: QuestionStatus
+    winnerQuestion?: boolean
     statusLabel: string
     characters: RevealedCharacter[]
   }>
   history: string
-}
-
-const CATEGORY_COLORS: Record<'light' | 'dark', Record<CharacterCategory, string>> = {
-  light: {
-    latin: 'hsl(0 78% 86%)', digit: 'hsl(45 88% 82%)', 'ascii-symbol': 'hsl(90 58% 80%)', kana: 'hsl(135 55% 82%)',
-    hangul: 'hsl(180 55% 80%)', cjk: 'hsl(225 72% 86%)', 'other-letter': 'hsl(271 68% 86%)', 'other-symbol': 'hsl(315 66% 85%)',
-  },
-  dark: {
-    latin: 'hsl(0 45% 31%)', digit: 'hsl(45 48% 29%)', 'ascii-symbol': 'hsl(90 34% 27%)', kana: 'hsl(135 35% 27%)',
-    hangul: 'hsl(180 38% 27%)', cjk: 'hsl(225 42% 34%)', 'other-letter': 'hsl(271 38% 34%)', 'other-symbol': 'hsl(315 37% 31%)',
-  },
+  textLabels: {
+    categories: string
+    guessed: string
+    defaultCategory: string
+    rules: string
+    nextPlayer: string
+    author: string
+  }
 }
 
 function download(blob: Blob, filename: string) {
@@ -111,8 +118,12 @@ async function renderBoardImage(snapshot: BoardSnapshot): Promise<Blob> {
   const questionLayouts = snapshot.questions.map((question) => {
     const characterRows = Math.max(1, Math.ceil(Math.max(question.characters.length, 1) / tileColumns))
     measuringContext.font = '500 11.5pt ui-sans-serif, system-ui, sans-serif'
-    const resolvedText = [question.answer, question.source, question.author].filter(Boolean).join(' · ')
-    const metaLines = question.status === 'solved' ? wrapLines(measuringContext, resolvedText, contentWidth - 32) : []
+    const authorText = question.author ? `（${snapshot.labels.author}：${question.author}）` : ''
+    const detailText = `${question.source}${authorText}`
+    const resolvedText = [question.answer, detailText].filter(Boolean).join(' · ')
+    const metaLines = question.status === 'solved' || question.winnerQuestion
+      ? wrapLines(measuringContext, resolvedText, contentWidth - 32)
+      : []
     return { characterRows, metaLines, height: 34 + characterRows * (tileSize + tileGap) + (metaLines.length ? 8 + metaLines.length * 22 : 8) }
   })
   const rulesHeight = 50 + ruleLines.length * 27
@@ -134,12 +145,11 @@ async function renderBoardImage(snapshot: BoardSnapshot): Promise<Blob> {
   ctx.scale(scale, scale)
 
   const dark = snapshot.theme === 'dark'
-  const theme = dark ? 'dark' as const : 'light' as const
   const accent = `hsl(${snapshot.themeHue} ${dark ? '86% 62%' : '78% 45%'})`
   const accentInk = snapshot.themeHue >= 35 && snapshot.themeHue <= 195 ? 'hsl(222 47% 8%)' : 'white'
   const colors = dark
-    ? { bg: 'hsl(222 47% 8%)', surface: 'hsl(220 30% 12%)', subtle: 'hsl(220 22% 18%)', text: 'hsl(210 40% 96%)', muted: 'hsl(215 18% 70%)', accent, line: 'hsl(218 22% 27%)', success: 'hsl(145 58% 53%)' }
-    : { bg: 'hsl(48 33% 97%)', surface: 'hsl(0 0% 100%)', subtle: 'hsl(45 24% 93%)', text: 'hsl(222 47% 11%)', muted: 'hsl(218 12% 42%)', accent, line: 'hsl(40 18% 82%)', success: 'hsl(145 54% 36%)' }
+    ? { bg: 'hsl(222 47% 8%)', surface: 'hsl(220 30% 12%)', subtle: 'hsl(220 22% 18%)', text: 'hsl(210 40% 96%)', muted: 'hsl(215 18% 70%)', accent, line: 'hsl(218 22% 27%)', success: 'hsl(145 58% 53%)', solvedRow: 'hsl(0 76% 54% / 0.2)', winnerRow: 'hsl(145 64% 48% / 0.2)' }
+    : { bg: 'hsl(48 33% 97%)', surface: 'hsl(0 0% 100%)', subtle: 'hsl(45 24% 93%)', text: 'hsl(222 47% 11%)', muted: 'hsl(218 12% 42%)', accent, line: 'hsl(40 18% 82%)', success: 'hsl(145 54% 36%)', solvedRow: 'hsl(0 78% 52% / 0.13)', winnerRow: 'hsl(145 62% 40% / 0.14)' }
 
   ctx.fillStyle = colors.bg
   ctx.fillRect(0, 0, width, height)
@@ -183,7 +193,7 @@ async function renderBoardImage(snapshot: BoardSnapshot): Promise<Blob> {
     ctx.fillRect(margin, y, contentWidth, 44)
     ctx.fillStyle = accentInk
     ctx.font = '800 15pt ui-sans-serif, system-ui, sans-serif'
-    ctx.fillText(snapshot.nextPlayer, margin + 16, y + 30)
+    ctx.fillText(`${snapshot.labels.nextPlayer} · ${snapshot.nextPlayer}`, margin + 16, y + 30)
     y += nextPlayerHeight
   }
 
@@ -229,11 +239,11 @@ async function renderBoardImage(snapshot: BoardSnapshot): Promise<Blob> {
     const row = Math.floor(index / legendColumns)
     const x = margin + column * (legendWidth + legendGap)
     const boxY = legendY + row * (legendBoxHeight + legendGap)
-    ctx.fillStyle = category.enabled ? CATEGORY_COLORS[theme][category.key] : colors.subtle
+    ctx.fillStyle = category.enabled ? CATEGORY_COLORS[category.key] : DEFAULT_CATEGORY_COLOR
     ctx.fillRect(x, boxY, legendWidth, legendBoxHeight)
     ctx.strokeStyle = colors.line
     ctx.strokeRect(x + 0.5, boxY + 0.5, legendWidth - 1, legendBoxHeight - 1)
-    ctx.fillStyle = category.enabled ? colors.text : colors.muted
+    ctx.fillStyle = category.enabled ? CATEGORY_INK[category.key] : DEFAULT_CATEGORY_INK
     ctx.font = '750 11pt ui-sans-serif, system-ui, sans-serif'
     ctx.textAlign = 'center'
     ctx.fillText(`${category.enabled ? '●' : '○'} ${category.label}`, x + legendWidth / 2, boxY + 23)
@@ -251,10 +261,14 @@ async function renderBoardImage(snapshot: BoardSnapshot): Promise<Blob> {
 
   snapshot.questions.forEach((question, questionIndex) => {
     const layout = questionLayouts[questionIndex]
+    if (question.winnerQuestion || question.status === 'solved') {
+      ctx.fillStyle = question.winnerQuestion ? colors.winnerRow : colors.solvedRow
+      ctx.fillRect(margin, y, contentWidth, layout.height - 1)
+    }
     ctx.fillStyle = colors.accent
     ctx.font = '900 12pt ui-monospace, monospace'
     ctx.fillText(`#${String(question.number).padStart(2, '0')}`, margin, y + 22)
-    ctx.fillStyle = question.status === 'solved' ? colors.accent : colors.muted
+    ctx.fillStyle = question.winnerQuestion ? colors.success : question.status === 'solved' ? colors.accent : colors.muted
     ctx.font = '700 11pt ui-sans-serif, system-ui, sans-serif'
     ctx.textAlign = 'right'
     ctx.fillText(question.statusLabel, margin + contentWidth, y + 22)
@@ -270,14 +284,14 @@ async function renderBoardImage(snapshot: BoardSnapshot): Promise<Blob> {
       if (!isSpace) {
         const category = classifyCharacter(item.character)
         const categorySetting = snapshot.categories.find((itemCategory) => itemCategory.key === category)
-        ctx.fillStyle = categorySetting?.enabled ? CATEGORY_COLORS[theme][category] : colors.subtle
+        ctx.fillStyle = categorySetting?.enabled ? CATEGORY_COLORS[category] : DEFAULT_CATEGORY_COLOR
         ctx.fillRect(x, tileY, tileSize, tileSize)
         ctx.strokeStyle = colors.line
         ctx.strokeRect(x + 0.5, tileY + 0.5, tileSize - 1, tileSize - 1)
         if (item.revealed && item.character) {
           ctx.save()
           ctx.globalAlpha = item.guessed ? 1 : 0.42
-          ctx.fillStyle = colors.text
+          ctx.fillStyle = categorySetting?.enabled ? CATEGORY_INK[category] : DEFAULT_CATEGORY_INK
           ctx.font = '800 15pt ui-monospace, "Noto Sans Mono", monospace'
           ctx.textAlign = 'center'
           ctx.textBaseline = 'middle'
@@ -289,7 +303,7 @@ async function renderBoardImage(snapshot: BoardSnapshot): Promise<Blob> {
       }
     })
 
-    if (question.status === 'solved') {
+    if (question.status === 'solved' || question.winnerQuestion) {
       const metaY = y + 39 + layout.characterRows * (tileSize + tileGap) + 10
       ctx.fillStyle = colors.muted
       ctx.font = '500 11.5pt ui-sans-serif, system-ui, sans-serif'

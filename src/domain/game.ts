@@ -89,6 +89,7 @@ export interface GameState {
   battleRoyale: BattleRoyaleState
   distinguishCharacterTypes: boolean
   visibleCategories: Record<CharacterCategory, boolean>
+  hideSolvedAfterNextAction: boolean
   updatedAt: string
 }
 

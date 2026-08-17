@@ -41,3 +41,16 @@ export function revealQuestion(question: Question, guesses: string[], actions: A
     return { character, revealed: guessed, guessed }
   })
 }
+
+export function solvedAtActionIndex(question: Question, actions: Array<GameAction | PlainAction>): number | null {
+  for (let index = 0; index < actions.length; index += 1) {
+    const history = actions.slice(0, index + 1)
+    if (getQuestionStatus(question, guessedForQuestion(history, question.id), history) === 'solved') return index
+  }
+  return null
+}
+
+export function shouldHideSolvedQuestion(question: Question, actions: Array<GameAction | PlainAction>): boolean {
+  const solvedAt = solvedAtActionIndex(question, actions)
+  return solvedAt !== null && actions.length > solvedAt + 1
+}

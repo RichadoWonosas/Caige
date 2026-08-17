@@ -1,12 +1,16 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { BattleRoyaleState, Question, StandardRulesetConfig } from '../src/domain/game'
+import { CATEGORY_KEYS, type BattleRoyaleState, type PlainAction, type Question, type StandardRulesetConfig } from '../src/domain/game'
 import { aliasGroupCount, answerContainsGuess, normalizeAnswer, normalizeCharacter } from '../src/domain/normalize'
 import { classifyCharacter } from '../src/domain/classify'
 import { getQuestionStatus, revealQuestion } from '../src/domain/reveal'
+import { shouldHideSolvedQuestion } from '../src/domain/reveal'
 import { sortedLetterGuesses } from '../src/domain/guess-history'
+import { CATEGORY_EMOJI } from '../src/domain/category-presentation'
 import { standardRuleset } from '../src/domain/rulesets/standard-v1'
 import { byCreatedAt, shuffled } from '../src/domain/order'
 import { i18n, messages } from '../src/i18n'
+import { renderBoardText } from '../src/features/status/text'
+import type { BoardSnapshot } from '../src/features/screenshot/render'
 
 const question = (id: string, authorPlayerId: string, answer: string): Question => ({
   id, authorPlayerId, title: id, answer, characterControls: [], createdAt: `2026-01-0${id.length}T00:00:00.000Z`,
@@ -72,6 +76,8 @@ describe('standard-v1 ruleset', () => {
     const outcomes = standardRuleset.evaluatePlayers(state, config)
     expect(outcomes.find((item) => item.playerId === 'p1')?.status).toBe('failed')
     expect(outcomes.find((item) => item.playerId === 'p2')?.status).toBe('winner')
+    expect(getQuestionStatus(state.questions[2], [], state.actionHistory)).toBe('active')
+    expect(standardRuleset.evaluateGame(state, config)).toEqual({ status: 'finished', winnerId: 'p2' })
   })
 
   it('records a letter action and advances the turn', () => {
@@ -132,7 +138,57 @@ describe('dynamic ordering and localization', () => {
       { id: '4', type: 'guess-letter' as const, value: 'A', result: 'hit' as const, createdAt: '' },
     ]
     expect(sortedLetterGuesses(actions)).toEqual(['A', 'B', '9', 'あ'])
+    expect(sortedLetterGuesses(actions, true)).toEqual(['A', 'b', '9', 'あ'])
     expect(actions.map((action) => action.value)).toEqual(['あ', '9', 'b', 'A'])
+  })
+
+  it('uses the requested square emoji sequence for all eight categories', () => {
+    expect(CATEGORY_KEYS.map((key) => CATEGORY_EMOJI[key]).join('')).toBe('🟥🟧🟨🟩🟦🟪🟫⬜')
+  })
+
+  it('hides a solved question only after one subsequent action', () => {
+    const item = question('q1', 'p1', 'Moon')
+    const actions: PlainAction[] = [
+      { id: '1', type: 'guess-answer', questionId: 'q1', value: '', hostJudgement: 'correct', result: 'solved', createdAt: '' },
+    ]
+    expect(shouldHideSolvedQuestion(item, actions)).toBe(false)
+    actions.push({ id: '2', type: 'guess-answer', questionId: 'other', value: '', hostJudgement: 'incorrect', result: 'miss', createdAt: '' })
+    expect(shouldHideSolvedQuestion(item, actions)).toBe(true)
+  })
+
+  it('renders a compact text status with emoji masks and full-width spaces', () => {
+    const categoryLabels = ['英文字母', '数字', 'ASCII符号', '假名', '韩文', '汉字', '其他字母', '其他符号']
+    const snapshot: BoardSnapshot = {
+      title: '', subtitle: '', theme: 'light', themeHue: 16, rules: '第一行\n第二行', appliedRules: ['规则 A'], nextPlayer: 'Alice',
+      guessedCharacters: ['A', 'E', '1', 'の'], textGuessedCharacters: ['a', 'e', '1', 'の'],
+      categories: CATEGORY_KEYS.map((key, index) => ({ key, label: categoryLabels[index], textLabel: categoryLabels[index], enabled: index >= 3 })),
+      labels: { rules: '', appliedRules: '', players: '', nextPlayer: '', author: '出题者', categories: '', guesses: '', guessOrder: '', history: '' },
+      questions: [
+        {
+          number: 1, answer: 'Ab 1の', source: '', status: 'active', statusLabel: '',
+          characters: [
+            { character: 'A', revealed: true, guessed: true }, { character: 'b', revealed: false, guessed: false },
+            { character: ' ', revealed: true, guessed: false }, { character: '1', revealed: false, guessed: false },
+            { character: 'の', revealed: false, guessed: false },
+          ],
+        },
+        { number: 2, answer: 'Blue Army', source: 'DJ Sharpnel', author: 'Bob', status: 'solved', statusLabel: '', characters: [] },
+        { number: 3, answer: 'Victory', source: 'Album', author: 'Alice', status: 'active', winnerQuestion: true, statusLabel: '', characters: [] },
+      ],
+      history: '',
+      textLabels: { categories: '字符类型', guessed: '已猜', defaultCategory: '其他字符', rules: '规则', nextPlayer: '下一个', author: '出题者' },
+    }
+    expect(renderBoardText(snapshot)).toBe([
+      '字符类型：英文字母⬛数字⬛ASCII符号⬛假名🟩韩文🟦汉字🟪其他字母🟫其他符号⬜',
+      '已猜：a e 1 の',
+      '1. A⬛　⬛🟩',
+      '2. Blue Army  -  DJ Sharpnel（出题者：Bob）',
+      '🟩3. Victory  -  Album（出题者：Alice）',
+      '规则：',
+      '第一行\n第二行',
+      '规则 A',
+      '下一个：Alice',
+    ].join('\n'))
   })
   it('shuffles without losing or duplicating stable ids', () => {
     vi.spyOn(Math, 'random').mockReturnValueOnce(0.1).mockReturnValueOnce(0.7).mockReturnValueOnce(0.2)

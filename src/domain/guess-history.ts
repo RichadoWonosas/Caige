@@ -9,20 +9,20 @@ function sortBucket(character: string): number {
   return 2
 }
 
-export function sortedLetterGuesses(actions: GuessAction[]): string[] {
+export function sortedLetterGuesses(actions: GuessAction[], preserveCase = false): string[] {
   const unique = new Map<string, string>()
   for (const action of actions) {
     if (action.type !== 'guess-letter' || action.result === 'invalid') continue
     const character = toCodePoints(action.value.trim())[0]
     if (!character) continue
     const identity = normalizeCharacter(character)
-    if (!unique.has(identity)) unique.set(identity, /^[A-Za-z]$/u.test(character) ? character.toUpperCase() : character)
+    if (!unique.has(identity)) unique.set(identity, preserveCase ? character : /^[A-Za-z]$/u.test(character) ? character.toUpperCase() : character)
   }
   return [...unique.values()].sort((left, right) => {
     const bucketDifference = sortBucket(left) - sortBucket(right)
     if (bucketDifference) return bucketDifference
-    const leftPoint = left.codePointAt(0) ?? 0
-    const rightPoint = right.codePointAt(0) ?? 0
+    const leftPoint = (/^[A-Za-z]$/u.test(left) ? left.toUpperCase() : left).codePointAt(0) ?? 0
+    const rightPoint = (/^[A-Za-z]$/u.test(right) ? right.toUpperCase() : right).codePointAt(0) ?? 0
     return leftPoint - rightPoint
   })
 }

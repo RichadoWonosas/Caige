@@ -3,9 +3,9 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRegisterSW } from 'virtual:pwa-register/vue'
 import {
-  ArrowDown, ArrowUp, BookOpen, Check, CircleHelp, CircleX, Download,
+  ArrowDown, ArrowUp, BookOpen, Check, ChevronUp, CircleHelp, CircleX, ClipboardCopy, Download,
   Image, Languages, LockKeyhole, MonitorDown, Play, Plus, RotateCcw, Save, Settings2,
-  Shuffle, Swords, Trash2, TriangleAlert, Type, Undo2, Upload,
+  Share2, Shuffle, Swords, Trash2, TriangleAlert, Type, Undo2, Upload,
 } from 'lucide-vue-next'
 import AppModal from './components/AppModal.vue'
 import QuestionBoard from './components/QuestionBoard.vue'
@@ -15,11 +15,12 @@ import { usePlainStore } from './stores/plain'
 import { useBattleStore } from './stores/battle'
 import type { BattleRoyaleState, CharacterControl, GameAction, GameState, Locale, PlainLettersState, Question, ThemePreference } from './domain/game'
 import { CATEGORY_KEYS } from './domain/game'
-import { guessedForQuestion, getQuestionStatus, revealQuestion } from './domain/reveal'
+import { guessedForQuestion, getQuestionStatus, revealQuestion, shouldHideSolvedQuestion } from './domain/reveal'
 import { sortedLetterGuesses } from './domain/guess-history'
 import { toCodePoints } from './domain/normalize'
 import { DEFAULT_STANDARD_RULESET_CONFIG, standardRuleset } from './domain/rulesets/standard-v1'
 import { copyBoardImage, saveBoardImage, type BoardSnapshot } from './features/screenshot/render'
+import { copyBoardText } from './features/status/text'
 import { loadGameState, saveGameState, validateImportedState } from './persistence/indexed-db'
 import compassHandUrl from './assets/theme/compass-hand.svg?url'
 import compassDialLightUrl from './assets/theme/compass-dial-light.svg?url'
@@ -40,7 +41,7 @@ const { t, locale } = useI18n()
 
 const helpOpen = ref(false)
 const themeSettingsOpen = ref(false)
-const saveImageOpen = ref(false)
+const statusMenuOpen = ref(false)
 const toasts = ref<ToastItem[]>([])
 const hydrated = ref(false)
 const saveStatus = ref<'saved' | 'saving'>('saved')
@@ -48,6 +49,7 @@ const guessType = ref<'guess-letter' | 'guess-answer'>('guess-letter')
 const guessValue = ref('')
 const targetQuestionId = ref('')
 const fileInput = ref<HTMLInputElement | null>(null)
+const statusMenuRef = ref<HTMLElement | null>(null)
 const pendingImport = ref<GameState | null>(null)
 const confirmState = ref<{ kind: 'reset' | 'delete-player' | 'import' | 'undo'; playerId?: string } | null>(null)
 const clearSessionRulesOnReset = ref(false)
@@ -57,12 +59,8 @@ const isDark = ref(false)
 const hueDragging = ref(false)
 const installPrompt = ref<InstallPromptEvent | null>(null)
 const isStandalone = ref(false)
-const imagePressing = ref(false)
 const toastTimers = new Map<number, ReturnType<typeof setTimeout>>()
 let nextToastId = 0
-let imagePressTimer: ReturnType<typeof setTimeout> | undefined
-let imagePressOrigin: { x: number; y: number } | undefined
-let ignoreImageClickUntil = 0
 let saveTimer: ReturnType<typeof setTimeout> | undefined
 let themeMedia: MediaQueryList | undefined
 
@@ -72,6 +70,7 @@ const currentPlayers = computed(() => settings.mode === 'song-battle-royale'
   : [])
 const currentActions = computed(() => settings.mode === 'song-battle-royale' ? battle.actionHistory : plain.actionHistory)
 const currentSortedGuesses = computed(() => sortedLetterGuesses(currentActions.value))
+const currentTextGuesses = computed(() => sortedLetterGuesses(currentActions.value, true))
 const currentActor = computed(() => battle.players.find((player) => player.id === battle.currentActorId))
 const currentSessionRules = computed({
   get: () => settings.mode === 'song-battle-royale' ? battle.sessionRules : plain.sessionRules,
@@ -89,9 +88,16 @@ const themeOptions: ThemePreference[] = ['system', 'light', 'dark']
 const huePresets = [0, 16, 45, 90, 160, 210, 255, 315]
 const undoAvailable = computed(() => settings.mode === 'song-battle-royale' ? battleUndoStack.value.length > 0 : plainUndoStack.value.length > 0)
 const outcomeMap = computed(() => new Map(battle.outcomes.map((outcome) => [outcome.playerId, outcome.status])))
+const battleGameFinished = computed(() => battle.phase === 'finished' || standardRuleset.evaluateGame(battle.$state, battle.rulesetConfig).status === 'finished')
 const allPlainSolved = computed(() => plain.questions.length > 0 && plain.questions.every((question) =>
   getQuestionStatus(question, plain.guessedLetters, plain.actionHistory) === 'solved',
 ))
+const exportQuestionEntries = computed(() => {
+  const gameFinished = settings.mode === 'song-battle-royale' ? battleGameFinished.value : allPlainSolved.value
+  return currentQuestions.value
+    .map((question, index) => ({ question, number: index + 1 }))
+    .filter(({ question }) => !settings.hideSolvedAfterNextAction || gameFinished || !shouldHideSolvedQuestion(question, currentActions.value))
+})
 
 const guessesByQuestion = computed<Record<string, string[]>>(() => Object.fromEntries(currentQuestions.value.map((question) => [
   question.id,
@@ -114,7 +120,7 @@ const selectableQuestions = computed(() => settings.mode === 'song-battle-royale
   : currentQuestions.value.filter((question) => getQuestionStatus(question, plain.guessedLetters, plain.actionHistory) === 'active'))
 const needsTarget = computed(() => guessType.value === 'guess-answer' || (settings.mode === 'song-battle-royale' && battle.rulesetConfig.letterScope === 'target'))
 const canSubmit = computed(() => {
-  if (settings.mode === 'song-battle-royale' && battle.phase !== 'playing') return false
+  if (settings.mode === 'song-battle-royale' && (battle.phase !== 'playing' || battleGameFinished.value)) return false
   if (guessType.value === 'guess-letter' && !guessValue.value.trim()) return false
   return !needsTarget.value || Boolean(targetQuestionId.value)
 })
@@ -185,6 +191,7 @@ function stateSnapshot(): GameState {
     battleRoyale: battle.$state,
     distinguishCharacterTypes: settings.distinguishCharacterTypes,
     visibleCategories: settings.visibleCategories,
+    hideSolvedAfterNextAction: settings.hideSolvedAfterNextAction,
     updatedAt: new Date().toISOString(),
   })) as GameState
 }
@@ -193,6 +200,7 @@ function applyState(state: GameState) {
   settings.mode = state.mode
   settings.distinguishCharacterTypes = state.distinguishCharacterTypes
   settings.visibleCategories = { ...state.visibleCategories }
+  settings.hideSolvedAfterNextAction = state.hideSolvedAfterNextAction ?? true
   plain.$patch({
     ...state.plain,
     questionOrder: Array.isArray(state.plain.questionOrder) ? state.plain.questionOrder : state.plain.questions.map((question) => question.id),
@@ -430,8 +438,16 @@ async function importState(event: Event) {
 
 function historyLine(action: GameAction | (typeof plain.actionHistory)[number]) {
   const actor = 'actorPlayerId' in action ? battle.players.find((player) => player.id === action.actorPlayerId)?.name : ''
-  const text = t(action.type === 'guess-letter' ? 'history.letter' : 'history.answer', { value: action.value })
-  return `${actor ? `${actor} · ` : ''}${text} · ${t(`history.result.${action.result}`)}`
+  if (action.type === 'guess-answer') {
+    const number = currentQuestions.value.findIndex((question) => question.id === action.questionId) + 1
+    const result = action.result === 'solved'
+      ? t('screenshot.answerResult.correct')
+      : action.result === 'miss'
+        ? t('screenshot.answerResult.incorrect')
+        : t('history.result.invalid')
+    return `${actor ? `${actor} · ` : ''}${t('screenshot.answerHistory', { number: number || '—' })} - ${result}`
+  }
+  return `${actor ? `${actor} · ` : ''}${t('history.letter', { value: action.value })} · ${t(`history.result.${action.result}`)}`
 }
 
 function boardSnapshot(): BoardSnapshot {
@@ -450,39 +466,74 @@ function boardSnapshot(): BoardSnapshot {
     themeHue: settings.accentHue,
     rules: currentSessionRules.value,
     appliedRules,
-    nextPlayer: isBattle && currentActor.value ? `${t('game.nextPlayer')} · ${currentActor.value.name}` : undefined,
+    nextPlayer: isBattle && !battleGameFinished.value && currentActor.value ? currentActor.value.name : undefined,
     players: isBattle ? currentPlayers.value.map((player) => {
       const status = outcomeMap.value.get(player.id) ?? 'active'
       return { name: player.name || '—', status, statusLabel: t(`player.status.${status}`) }
     }) : undefined,
     guessedCharacters: currentSortedGuesses.value,
-    categories: CATEGORY_KEYS.map((key) => ({ key, label: t(`category.${key}`), enabled: settings.distinguishCharacterTypes && settings.visibleCategories[key] })),
+    textGuessedCharacters: currentTextGuesses.value,
+    categories: CATEGORY_KEYS.map((key) => ({ key, label: t(`category.${key}`), textLabel: t(`textStatus.category.${key}`), enabled: settings.distinguishCharacterTypes && settings.visibleCategories[key] })),
     labels: {
       rules: t('screenshot.rules'),
       appliedRules: t('screenshot.appliedRules'),
       players: t('screenshot.players'),
+      nextPlayer: t('game.nextPlayer'),
+      author: t('question.author'),
       categories: t('screenshot.categories'),
       guesses: t('screenshot.guesses'),
       guessOrder: t('screenshot.guessOrder'),
       history: t('screenshot.history'),
     },
-    questions: currentQuestions.value.map((question, index) => {
+    questions: exportQuestionEntries.value.map(({ question, number }) => {
       const status = getQuestionStatus(question, guessesByQuestion.value[question.id] ?? [], currentActions.value)
+      const winnerQuestion = isBattle && question.authorPlayerId !== null && outcomeMap.value.get(question.authorPlayerId) === 'winner'
+      const characters = revealQuestion(question, guessesByQuestion.value[question.id] ?? [], currentActions.value)
       return {
-        number: index + 1,
+        number,
         answer: question.answer,
         source: question.title,
         author: isBattle ? battle.players.find((player) => player.id === question.authorPlayerId)?.name : undefined,
         status,
-        statusLabel: t(`question.status.${status}`),
-        characters: revealQuestion(question, guessesByQuestion.value[question.id] ?? [], currentActions.value),
+        winnerQuestion,
+        statusLabel: winnerQuestion ? t('screenshot.winnerQuestion') : t(`question.status.${status}`),
+        characters: winnerQuestion ? characters.map((character) => ({ ...character, revealed: true })) : characters,
       }
     }),
     history: currentActions.value.map(historyLine).join('  →  '),
+    textLabels: {
+      categories: t('textStatus.categories'),
+      guessed: t('textStatus.guessed'),
+      defaultCategory: t('textStatus.defaultCategory'),
+      rules: t('textStatus.rules'),
+      nextPlayer: t('textStatus.nextPlayer'),
+      author: t('question.author'),
+    },
   }
 }
 
+function closeStatusMenu() {
+  statusMenuOpen.value = false
+}
+
+function toggleStatusMenu() {
+  statusMenuOpen.value = !statusMenuOpen.value
+}
+
+function onDocumentPointerDown(event: PointerEvent) {
+  if (statusMenuOpen.value && !statusMenuRef.value?.contains(event.target as Node)) closeStatusMenu()
+}
+
+async function copyTextStatus() {
+  closeStatusMenu()
+  try {
+    await copyBoardText(boardSnapshot())
+    showToast(t('toast.textCopied'))
+  } catch { showToast(t('errors.generic'), 'error') }
+}
+
 async function copyImage() {
+  closeStatusMenu()
   try {
     const result = await copyBoardImage(boardSnapshot())
     showToast(t(result === 'copied' ? 'toast.copied' : 'toast.downloaded'))
@@ -490,41 +541,11 @@ async function copyImage() {
 }
 
 async function saveImage() {
-  saveImageOpen.value = false
+  closeStatusMenu()
   try {
     await saveBoardImage(boardSnapshot())
     showToast(t('toast.imageSaved'))
   } catch { showToast(t('errors.generic'), 'error') }
-}
-
-function cancelImageLongPress() {
-  clearTimeout(imagePressTimer)
-  imagePressTimer = undefined
-  imagePressOrigin = undefined
-  imagePressing.value = false
-}
-
-function startImageLongPress(event: PointerEvent) {
-  if (event.pointerType === 'mouse' && event.button !== 0) return
-  cancelImageLongPress()
-  imagePressOrigin = { x: event.clientX, y: event.clientY }
-  imagePressing.value = true
-  imagePressTimer = setTimeout(() => {
-    imagePressTimer = undefined
-    imagePressing.value = false
-    ignoreImageClickUntil = Date.now() + 900
-    saveImageOpen.value = true
-  }, 650)
-}
-
-function moveImageLongPress(event: PointerEvent) {
-  if (!imagePressOrigin) return
-  if (Math.hypot(event.clientX - imagePressOrigin.x, event.clientY - imagePressOrigin.y) > 12) cancelImageLongPress()
-}
-
-function handleImageButtonClick() {
-  if (Date.now() < ignoreImageClickUntil) return
-  void copyImage()
 }
 
 async function performUpdate() {
@@ -532,6 +553,10 @@ async function performUpdate() {
 }
 
 function onKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape' && statusMenuOpen.value) {
+    closeStatusMenu()
+    return
+  }
   const target = event.target as HTMLElement | null
   if (target?.matches('input, textarea, select, [contenteditable="true"]')) return
   if (!event.ctrlKey || !event.shiftKey) return
@@ -541,7 +566,7 @@ function onKeydown(event: KeyboardEvent) {
   if (key === 'g') randomizeOrder()
   if (key === 'r') restoreOrder()
   if (key === 'c') requestReset()
-  if (key === 'f') void copyImage()
+  if (key === 'f') toggleStatusMenu()
 }
 
 watch(() => settings.locale, (value) => { locale.value = value }, { immediate: true })
@@ -554,7 +579,7 @@ watch([selectableQuestions, needsTarget], () => {
 watch(offlineReady, (ready) => { if (ready) showToast(t('pwa.offlineReady')) })
 
 watch(
-  [() => settings.mode, () => settings.distinguishCharacterTypes, () => settings.visibleCategories, () => plain.$state, () => battle.$state],
+  [() => settings.mode, () => settings.distinguishCharacterTypes, () => settings.visibleCategories, () => settings.hideSolvedAfterNextAction, () => plain.$state, () => battle.$state],
   () => {
     if (!hydrated.value) return
     saveStatus.value = 'saving'
@@ -580,6 +605,7 @@ onMounted(async () => {
   window.addEventListener('appinstalled', onAppInstalled)
   applyTheme()
   window.addEventListener('keydown', onKeydown)
+  document.addEventListener('pointerdown', onDocumentPointerDown)
   try {
     const saved = await loadGameState()
     if (saved && validateImportedState(saved)) {
@@ -592,10 +618,10 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeydown)
+  document.removeEventListener('pointerdown', onDocumentPointerDown)
   window.removeEventListener('beforeinstallprompt', onBeforeInstallPrompt)
   window.removeEventListener('appinstalled', onAppInstalled)
   themeMedia?.removeEventListener('change', applyTheme)
-  cancelImageLongPress()
   toastTimers.forEach((timer) => clearTimeout(timer))
   toastTimers.clear()
   clearTimeout(saveTimer)
@@ -736,13 +762,13 @@ onBeforeUnmount(() => {
             <div class="eyebrow">PLAY / 02</div>
             <h2>{{ $t('game.title') }}</h2>
             <p v-if="settings.mode === 'give-your-letters'">{{ allPlainSolved ? $t('game.allComplete') : $t('game.plainIntro') }}</p>
+            <p v-else-if="battleGameFinished">{{ $t('game.finished') }}</p>
             <p v-else-if="battle.phase === 'playing'">{{ $t('game.nextPlayer') }} <strong>{{ currentActor?.name }}</strong></p>
-            <p v-else-if="battle.phase === 'finished'">{{ $t('game.finished') }}</p>
             <p v-else>{{ $t('game.waiting') }}</p>
           </div>
           <button v-if="settings.mode === 'song-battle-royale' && battle.phase === 'setup'" class="start-button" type="button" @click="startGame"><Play :size="19" fill="currentColor" />{{ $t('game.start') }}</button>
           <div v-else-if="settings.mode === 'song-battle-royale'" class="current-actor-badge">
-            <span>{{ $t(battle.phase === 'finished' ? 'game.endBadge' : 'game.turnBadge') }}</span><strong>{{ currentActor?.name || $t('game.finished') }}</strong>
+            <span>{{ $t(battleGameFinished ? 'game.endBadge' : 'game.turnBadge') }}</span><strong>{{ battleGameFinished ? $t('game.finished') : currentActor?.name }}</strong>
           </div>
           <div v-else class="current-actor-badge plain"><span>{{ $t('game.sharedBadge') }}</span><strong>{{ currentSortedGuesses.length }}</strong></div>
         </section>
@@ -753,7 +779,7 @@ onBeforeUnmount(() => {
           </div>
         </div>
 
-        <section class="guess-console panel" :class="{ disabled: settings.mode === 'song-battle-royale' && battle.phase !== 'playing' }">
+        <section class="guess-console panel" :class="{ disabled: settings.mode === 'song-battle-royale' && (battle.phase !== 'playing' || battleGameFinished) }">
           <div class="guess-tabs" role="tablist">
             <button type="button" :class="{ active: guessType === 'guess-letter' }" @click="guessType = 'guess-letter'"><Type :size="16" />{{ $t('game.letter') }}</button>
             <button type="button" :class="{ active: guessType === 'guess-answer' }" @click="guessType = 'guess-answer'"><BookOpen :size="16" />{{ $t('game.answer') }}</button>
@@ -775,20 +801,23 @@ onBeforeUnmount(() => {
           <button type="button" aria-keyshortcuts="Control+Shift+G" @click="randomizeOrder"><Shuffle :size="16" />{{ $t('actions.randomQuestions') }}<kbd>G</kbd></button>
           <button type="button" aria-keyshortcuts="Control+Shift+R" @click="restoreOrder"><RotateCcw :size="16" />{{ $t('actions.restoreQuestions') }}<kbd>R</kbd></button>
           <button type="button" :disabled="!undoAvailable" @click="requestUndo"><Undo2 :size="16" />{{ $t('actions.undo') }}</button>
-          <button
-            type="button"
-            :class="{ 'long-pressing': imagePressing }"
-            :title="$t('actions.copyImageHint')"
-            :aria-label="$t('actions.copyImageHint')"
-            aria-keyshortcuts="Control+Shift+F"
-            @click="handleImageButtonClick"
-            @pointerdown="startImageLongPress"
-            @pointermove="moveImageLongPress"
-            @pointerup="cancelImageLongPress"
-            @pointercancel="cancelImageLongPress"
-            @pointerleave="cancelImageLongPress"
-            @contextmenu.prevent
-          ><Image :size="16" />{{ $t('actions.copyImage') }}<kbd>F</kbd></button>
+          <div ref="statusMenuRef" class="status-menu-wrap">
+            <button
+              class="status-menu-trigger"
+              type="button"
+              :title="$t('actions.statusMenu')"
+              :aria-label="$t('actions.statusMenu')"
+              aria-haspopup="menu"
+              :aria-expanded="statusMenuOpen"
+              aria-keyshortcuts="Control+Shift+F"
+              @click="toggleStatusMenu"
+            ><Share2 :size="16" />{{ $t('actions.status') }}<ChevronUp :size="14" class="menu-chevron" :class="{ open: statusMenuOpen }" /><kbd>F</kbd></button>
+            <div v-if="statusMenuOpen" class="status-menu" role="menu">
+              <button type="button" role="menuitem" @click="copyTextStatus"><ClipboardCopy :size="16" />{{ $t('actions.copyTextStatus') }}</button>
+              <button type="button" role="menuitem" @click="copyImage"><Image :size="16" />{{ $t('actions.copyImage') }}</button>
+              <button type="button" role="menuitem" @click="saveImage"><Download :size="16" />{{ $t('actions.saveImage') }}</button>
+            </div>
+          </div>
           <button class="danger" type="button" aria-keyshortcuts="Control+Shift+C" @click="requestReset"><Trash2 :size="16" />{{ $t('actions.reset') }}<kbd>C</kbd></button>
         </div>
 
@@ -811,6 +840,7 @@ onBeforeUnmount(() => {
                 <span></span>{{ $t(`category.${category}`) }}
               </button>
             </div>
+            <label class="toggle-row status-visibility-option"><input v-model="settings.hideSolvedAfterNextAction" type="checkbox" /><span>{{ $t('board.hideSolvedAfterNextAction') }}</span></label>
           </section>
           <ActionHistory :actions="currentActions" :players="currentPlayers" />
         </div>
@@ -879,15 +909,6 @@ onBeforeUnmount(() => {
         </section>
       </div>
     </AppModal>
-
-    <AppModal
-      :open="saveImageOpen"
-      :title="$t('dialog.saveImageTitle')"
-      :description="$t('dialog.saveImageBody')"
-      :confirm-label="$t('actions.saveImage')"
-      @close="saveImageOpen = false"
-      @confirm="saveImage"
-    />
 
     <AppModal :open="helpOpen" :title="$t('help.title')" @close="helpOpen = false">
       <div class="help-content">
