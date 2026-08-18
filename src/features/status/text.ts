@@ -1,24 +1,36 @@
 import { classifyCharacter } from '../../domain/classify'
 import {
   CATEGORY_EMOJI,
+  COMPATIBLE_CATEGORY_MARKERS,
+  COMPATIBLE_DISABLED_MARKER,
+  COMPATIBLE_WINNER_MARKER,
   DEFAULT_CATEGORY_EMOJI,
   FULL_WIDTH_SPACE,
 } from '../../domain/category-presentation'
 import type { BoardSnapshot } from '../screenshot/render'
 
-export function renderBoardText(snapshot: BoardSnapshot): string {
+export type BoardTextFormat = 'color' | 'compatible'
+
+export function renderBoardText(snapshot: BoardSnapshot, format: BoardTextFormat = 'color'): string {
+  const compatible = format === 'compatible'
+  const disabledMarker = compatible ? COMPATIBLE_DISABLED_MARKER : DEFAULT_CATEGORY_EMOJI
   const categoryLine = snapshot.categories
-    .map((category) => `${category.enabled ? CATEGORY_EMOJI[category.key] : DEFAULT_CATEGORY_EMOJI}${category.textLabel}`)
+    .map((category) => `${snapshot.distinguishCharacterTypes && category.enabled
+      ? compatible ? COMPATIBLE_CATEGORY_MARKERS[category.key] : CATEGORY_EMOJI[category.key]
+      : disabledMarker}${category.textLabel}`)
     .join(FULL_WIDTH_SPACE)
+  const categoryLegend = snapshot.distinguishCharacterTypes
+    ? categoryLine
+    : `${disabledMarker}${snapshot.textLabels.disabledCategory}`
 
   const lines = [
-    `${snapshot.textLabels.categories}：${categoryLine}`,
+    `${snapshot.textLabels.categories}：${categoryLegend}`,
     `${snapshot.textLabels.guessed}：${snapshot.textGuessedCharacters.join(' ') || '—'}`,
   ]
 
   snapshot.questions.forEach((question) => {
     if (question.status === 'solved' || question.winnerQuestion) {
-      const winnerMarker = question.winnerQuestion ? '🟩' : ''
+      const winnerMarker = question.winnerQuestion ? compatible ? COMPATIBLE_WINNER_MARKER : '🟩' : ''
       const author = question.author ? `（${snapshot.textLabels.author}：${question.author}）` : ''
       const detail = `${question.source}${author}`
       lines.push(`${winnerMarker}${question.number}. ${question.answer}${detail ? `  -  ${detail}` : ''}`)
@@ -28,9 +40,9 @@ export function renderBoardText(snapshot: BoardSnapshot): string {
       if (/\s/u.test(item.character)) return FULL_WIDTH_SPACE
       if (item.revealed) return item.character
       const category = classifyCharacter(item.character)
-      return snapshot.categories.find((itemCategory) => itemCategory.key === category)?.enabled
-        ? CATEGORY_EMOJI[category]
-        : DEFAULT_CATEGORY_EMOJI
+      return snapshot.distinguishCharacterTypes && snapshot.categories.find((itemCategory) => itemCategory.key === category)?.enabled
+        ? compatible ? COMPATIBLE_CATEGORY_MARKERS[category] : CATEGORY_EMOJI[category]
+        : disabledMarker
     }).join('')
     lines.push(`${question.number}. ${body}`)
   })
@@ -55,8 +67,8 @@ function legacyCopy(text: string): boolean {
   return copied
 }
 
-export async function copyBoardText(snapshot: BoardSnapshot): Promise<void> {
-  const text = renderBoardText(snapshot)
+export async function copyBoardText(snapshot: BoardSnapshot, format: BoardTextFormat = 'color'): Promise<void> {
+  const text = renderBoardText(snapshot, format)
   if (window.isSecureContext && navigator.clipboard?.writeText) {
     try {
       await navigator.clipboard.writeText(text)

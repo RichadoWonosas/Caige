@@ -19,6 +19,7 @@ export interface BoardSnapshot {
   players?: Array<{ name: string; status: PlayerStatus; statusLabel: string }>
   guessedCharacters: string[]
   textGuessedCharacters: string[]
+  distinguishCharacterTypes: boolean
   categories: Array<{ key: CharacterCategory; label: string; textLabel: string; enabled: boolean }>
   labels: {
     rules: string
@@ -46,6 +47,7 @@ export interface BoardSnapshot {
     categories: string
     guessed: string
     defaultCategory: string
+    disabledCategory: string
     rules: string
     nextPlayer: string
     author: string

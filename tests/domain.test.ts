@@ -5,7 +5,7 @@ import { classifyCharacter } from '../src/domain/classify'
 import { getQuestionStatus, revealQuestion } from '../src/domain/reveal'
 import { shouldHideSolvedQuestion } from '../src/domain/reveal'
 import { sortedLetterGuesses } from '../src/domain/guess-history'
-import { CATEGORY_EMOJI } from '../src/domain/category-presentation'
+import { CATEGORY_EMOJI, COMPATIBLE_CATEGORY_MARKERS } from '../src/domain/category-presentation'
 import { standardRuleset } from '../src/domain/rulesets/standard-v1'
 import { byCreatedAt, shuffled } from '../src/domain/order'
 import { i18n, messages } from '../src/i18n'
@@ -144,6 +144,7 @@ describe('dynamic ordering and localization', () => {
 
   it('uses the requested square emoji sequence for all eight categories', () => {
     expect(CATEGORY_KEYS.map((key) => CATEGORY_EMOJI[key]).join('')).toBe('🟥🟧🟨🟩🟦🟪🟫⬜')
+    expect(CATEGORY_KEYS.map((key) => COMPATIBLE_CATEGORY_MARKERS[key]).join('')).toBe('Ⓐ①＠㋐㉻㊥ⓐ㉿')
   })
 
   it('hides a solved question only after one subsequent action', () => {
@@ -161,6 +162,7 @@ describe('dynamic ordering and localization', () => {
     const snapshot: BoardSnapshot = {
       title: '', subtitle: '', theme: 'light', themeHue: 16, rules: '第一行\n第二行', appliedRules: ['规则 A'], nextPlayer: 'Alice',
       guessedCharacters: ['A', 'E', '1', 'の'], textGuessedCharacters: ['a', 'e', '1', 'の'],
+      distinguishCharacterTypes: true,
       categories: CATEGORY_KEYS.map((key, index) => ({ key, label: categoryLabels[index], textLabel: categoryLabels[index], enabled: index >= 3 })),
       labels: { rules: '', appliedRules: '', players: '', nextPlayer: '', author: '出题者', categories: '', guesses: '', guessOrder: '', history: '' },
       questions: [
@@ -176,7 +178,7 @@ describe('dynamic ordering and localization', () => {
         { number: 3, answer: 'Victory', source: 'Album', author: 'Alice', status: 'active', winnerQuestion: true, statusLabel: '', characters: [] },
       ],
       history: '',
-      textLabels: { categories: '字符类型', guessed: '已猜', defaultCategory: '其他字符', rules: '规则', nextPlayer: '下一个', author: '出题者' },
+      textLabels: { categories: '字符类型', guessed: '已猜', defaultCategory: '其他字符', disabledCategory: '已关闭类型显示', rules: '规则', nextPlayer: '下一个', author: '出题者' },
     }
     expect(renderBoardText(snapshot)).toBe([
       '字符类型：⬛英文字母　⬛数字　⬛英文键盘符号　🟩假名　🟦韩文　🟪汉字　🟫其他字母　⬜其他符号',
@@ -189,6 +191,20 @@ describe('dynamic ordering and localization', () => {
       '规则 A',
       '下一个：Alice',
     ].join('\n'))
+    expect(renderBoardText(snapshot, 'compatible')).toBe([
+      '字符类型：〇英文字母　〇数字　〇英文键盘符号　㋐假名　㉻韩文　㊥汉字　ⓐ其他字母　㉿其他符号',
+      '已猜：a e 1 の',
+      '1. A〇　〇㋐',
+      '2. Blue Army  -  DJ Sharpnel（出题者：Bob）',
+      '★3. Victory  -  Album（出题者：Alice）',
+      '规则：',
+      '第一行\n第二行',
+      '规则 A',
+      '下一个：Alice',
+    ].join('\n'))
+    const typesDisabled = { ...snapshot, distinguishCharacterTypes: false }
+    expect(renderBoardText(typesDisabled).split('\n')[0]).toBe('字符类型：⬛已关闭类型显示')
+    expect(renderBoardText(typesDisabled, 'compatible').split('\n')[0]).toBe('字符类型：〇已关闭类型显示')
   })
   it('shuffles without losing or duplicating stable ids', () => {
     vi.spyOn(Math, 'random').mockReturnValueOnce(0.1).mockReturnValueOnce(0.7).mockReturnValueOnce(0.2)

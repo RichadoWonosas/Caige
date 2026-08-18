@@ -42,7 +42,7 @@ const zhHans = {
   },
   actions: {
     gameActions: '对局操作', addPlayer: '添加玩家', addQuestion: '添加题目', randomPlayers: '随机玩家', randomQuestions: '随机题目',
-    restorePlayers: '恢复玩家顺序', restoreQuestions: '恢复题目顺序', undo: '撤销上一步', reset: '重置本局', status: '导出战况', statusMenu: '打开战况导出菜单', copyTextStatus: '复制文字战况', copyImage: '复制战况图', copyImageHint: '复制战况图', saveImage: '保存战况图',
+    restorePlayers: '恢复玩家顺序', restoreQuestions: '恢复题目顺序', undo: '撤销上一步', reset: '重置本局', status: '导出战况', statusMenu: '打开战况导出菜单', copyTextStatus: '复制文字战况', copyCompatibleTextStatus: '复制兼容文字', copyImage: '复制战况图', copyImageHint: '复制战况图', saveImage: '保存战况图',
     export: '导出 JSON', import: '导入 JSON', delete: '删除', moveUp: '上移', moveDown: '下移', cancel: '取消', confirm: '确认', close: '关闭', update: '立即更新',
   },
   dialog: {
@@ -61,7 +61,7 @@ const zhHans = {
     keyG: '随机题目序列', keyR: '恢复题目序列', keyC: '重置本局', keyF: '打开战况导出菜单',
   },
   toast: {
-    saved: '已保存到此设备', restored: '已恢复上次对局', exported: '备份已下载', imported: '备份已导入', copied: '战况图已复制', textCopied: '文字战况已复制', imageSaved: '战况图已保存到本地',
+    saved: '已保存到此设备', restored: '已恢复上次对局', exported: '备份已下载', imported: '备份已导入', copied: '战况图已复制', textCopied: '文字战况已复制', compatibleTextCopied: '兼容文字已复制', imageSaved: '战况图已保存到本地',
     downloaded: '浏览器不支持图片剪贴板，已下载 PNG', reset: '当前模式已重置', undone: '已撤销上一步对局操作', shuffled: '题目序列已随机',
     restoredOrder: '已恢复题目创建顺序', update: '有新版本可用', invalid: '请输入 1 个有效字符', invalidTarget: '请选择一道仍在竞猜中的题目',
     miss: '主持人判定未猜中，行动已记录', hit: '命中！状态板已更新', solved: '主持人判定猜中，题目已完成', started: '对局开始',
@@ -72,7 +72,7 @@ const zhHans = {
     question: { required: '曲名原文不能为空。', length: '曲名原文不能超过 256 个字符。', author: '每道题都必须关联现有玩家。', target: '指定题目玩法至少需要 1 道题。' },
   },
   screenshot: { rules: '本局规则', appliedRules: '当前规则选项', players: '玩家存活情况', categories: '字符类型', guesses: '已开字符', guessOrder: 'A–Z / 0–9 / Unicode', history: '猜测历史', winnerQuestion: '胜者题目', answerHistory: '猜曲目 {number}', answerResult: { correct: '猜对', incorrect: '猜错' } },
-  textStatus: { categories: '字符类型', guessed: '已猜', defaultCategory: '其他字符', rules: '规则', nextPlayer: '下一个', category: { latin: '英文字母', digit: '数字', 'ascii-symbol': '英文键盘符号', kana: '假名', hangul: '韩文', cjk: '汉字', 'other-letter': '其他字母', 'other-symbol': '其他符号' } },
+  textStatus: { categories: '字符类型', guessed: '已猜', defaultCategory: '其他字符', disabledCategory: '已关闭类型显示', rules: '规则', nextPlayer: '下一个', category: { latin: '英文字母', digit: '数字', 'ascii-symbol': '英文键盘符号', kana: '假名', hangul: '韩文', cjk: '汉字', 'other-letter': '其他字母', 'other-symbol': '其他符号' } },
   pwa: { offlineReady: 'Caige 已可离线使用', updateAvailable: '有新版本。更新前会先保存当前对局。', installReady: '安装 Caige 到本机', installWaiting: 'PWA 正在准备或当前浏览器不提供安装提示', installPreparing: '开发版 Service Worker 已启用；刷新一次后可再次检查安装按钮', installUnavailable: '当前浏览器未提供安装提示；也可以使用浏览器菜单中的“安装应用”', installDismissed: '已取消安装', installed: 'Caige 已安装到本机' },
 }
 
@@ -121,7 +121,7 @@ const zhHant = defineMessages({
   },
   actions: {
     gameActions: '對局操作', addPlayer: '新增玩家', addQuestion: '新增題目', randomPlayers: '隨機玩家', randomQuestions: '隨機題目',
-    restorePlayers: '恢復玩家順序', restoreQuestions: '恢復題目順序', undo: '復原上一步', reset: '重設本局', status: '匯出戰況', statusMenu: '開啟戰況匯出選單', copyTextStatus: '複製文字戰況', copyImage: '複製戰況圖', copyImageHint: '複製戰況圖', saveImage: '儲存戰況圖',
+    restorePlayers: '恢復玩家順序', restoreQuestions: '恢復題目順序', undo: '復原上一步', reset: '重設本局', status: '匯出戰況', statusMenu: '開啟戰況匯出選單', copyTextStatus: '複製文字戰況', copyCompatibleTextStatus: '複製相容文字', copyImage: '複製戰況圖', copyImageHint: '複製戰況圖', saveImage: '儲存戰況圖',
     export: '匯出 JSON', import: '匯入 JSON', delete: '刪除', moveUp: '上移', moveDown: '下移', cancel: '取消', confirm: '確認', close: '關閉', update: '立即更新',
   },
   dialog: {
@@ -140,7 +140,7 @@ const zhHant = defineMessages({
     keyG: '隨機題目順序', keyR: '恢復題目順序', keyC: '重設本局', keyF: '開啟戰況匯出選單',
   },
   toast: {
-    saved: '已儲存至此裝置', restored: '已恢復上次對局', exported: '備份已下載', imported: '備份已匯入', copied: '戰況圖已複製', textCopied: '文字戰況已複製', imageSaved: '戰況圖已儲存至本機',
+    saved: '已儲存至此裝置', restored: '已恢復上次對局', exported: '備份已下載', imported: '備份已匯入', copied: '戰況圖已複製', textCopied: '文字戰況已複製', compatibleTextCopied: '相容文字已複製', imageSaved: '戰況圖已儲存至本機',
     downloaded: '瀏覽器不支援圖片剪貼簿，已下載 PNG', reset: '目前模式已重設', undone: '已復原上一步對局操作', shuffled: '題目順序已隨機排列',
     restoredOrder: '已恢復題目建立順序', update: '有新版本可用', invalid: '請輸入 1 個有效字元', invalidTarget: '請選擇一道仍在競猜中的題目',
     miss: '主持人判定未猜中，行動已記錄', hit: '命中！狀態板已更新', solved: '主持人判定猜中，題目已完成', started: '對局開始',
@@ -151,7 +151,7 @@ const zhHant = defineMessages({
     question: { required: '曲名原文不能為空。', length: '曲名原文不能超過 256 個字元。', author: '每道題都必須關聯現有玩家。', target: '指定題目玩法至少需要 1 道題。' },
   },
   screenshot: { rules: '本局規則', appliedRules: '目前規則選項', players: '玩家存活狀況', categories: '字元類型', guesses: '已開字元', guessOrder: 'A–Z / 0–9 / Unicode', history: '猜測歷史', winnerQuestion: '勝者題目', answerHistory: '猜曲目 {number}', answerResult: { correct: '猜對', incorrect: '猜錯' } },
-  textStatus: { categories: '字元類型', guessed: '已猜', defaultCategory: '其他字元', rules: '規則', nextPlayer: '下一位', category: { latin: '英文字母', digit: '數字', 'ascii-symbol': '英文鍵盤符號', kana: '假名', hangul: '韓文', cjk: '漢字', 'other-letter': '其他字母', 'other-symbol': '其他符號' } },
+  textStatus: { categories: '字元類型', guessed: '已猜', defaultCategory: '其他字元', disabledCategory: '已關閉類型顯示', rules: '規則', nextPlayer: '下一位', category: { latin: '英文字母', digit: '數字', 'ascii-symbol': '英文鍵盤符號', kana: '假名', hangul: '韓文', cjk: '漢字', 'other-letter': '其他字母', 'other-symbol': '其他符號' } },
   pwa: { offlineReady: 'Caige 已可離線使用', updateAvailable: '有新版本。更新前會先儲存目前對局。', installReady: '將 Caige 安裝到本機', installWaiting: 'PWA 正在準備，或目前瀏覽器未提供安裝提示', installPreparing: '開發版 Service Worker 已啟用；重新整理一次後可再次檢查安裝按鈕', installUnavailable: '目前瀏覽器未提供安裝提示；也可使用瀏覽器選單中的「安裝應用程式」', installDismissed: '已取消安裝', installed: 'Caige 已安裝到本機' },
 })
 
@@ -196,7 +196,7 @@ const enUS = defineMessages({
   },
   actions: {
     gameActions: 'Game actions', addPlayer: 'Add player', addQuestion: 'Add question', randomPlayers: 'Shuffle players', randomQuestions: 'Shuffle questions',
-    restorePlayers: 'Restore player order', restoreQuestions: 'Restore question order', undo: 'Undo last action', reset: 'Reset game', status: 'Export status', statusMenu: 'Open the status export menu', copyTextStatus: 'Copy text status', copyImage: 'Copy game image', copyImageHint: 'Copy game image', saveImage: 'Save game image',
+    restorePlayers: 'Restore player order', restoreQuestions: 'Restore question order', undo: 'Undo last action', reset: 'Reset game', status: 'Export status', statusMenu: 'Open the status export menu', copyTextStatus: 'Copy text status', copyCompatibleTextStatus: 'Copy compatible text', copyImage: 'Copy game image', copyImageHint: 'Copy game image', saveImage: 'Save game image',
     export: 'Export JSON', import: 'Import JSON', delete: 'Delete', moveUp: 'Move up', moveDown: 'Move down', cancel: 'Cancel', confirm: 'Confirm', close: 'Close', update: 'Update now',
   },
   dialog: {
@@ -215,7 +215,7 @@ const enUS = defineMessages({
     keyG: 'Shuffle question order', keyR: 'Restore question order', keyC: 'Reset game', keyF: 'Open the status export menu',
   },
   toast: {
-    saved: 'Saved on this device', restored: 'Previous game restored', exported: 'Backup downloaded', imported: 'Backup imported', copied: 'Game image copied', textCopied: 'Text status copied', imageSaved: 'Game image saved to this device',
+    saved: 'Saved on this device', restored: 'Previous game restored', exported: 'Backup downloaded', imported: 'Backup imported', copied: 'Game image copied', textCopied: 'Text status copied', compatibleTextCopied: 'Compatible text copied', imageSaved: 'Game image saved to this device',
     downloaded: 'Image clipboard is unavailable; a PNG was downloaded', reset: 'Current mode reset', undone: 'Last game action undone', shuffled: 'Question order shuffled',
     restoredOrder: 'Question creation order restored', update: 'A new version is available', invalid: 'Enter 1 valid character', invalidTarget: 'Select a question that is still in play',
     miss: 'Host marked it incorrect; the action was recorded', hit: 'Hit! The status board was updated', solved: 'Host marked it correct; the question is complete', started: 'Game started',
@@ -226,7 +226,7 @@ const enUS = defineMessages({
     question: { required: 'The original song title is required.', length: 'The original song title cannot exceed 256 characters.', author: 'Every question must be linked to an existing player.', target: 'Targeted-character mode requires at least 1 question.' },
   },
   screenshot: { rules: 'ROUND RULES', appliedRules: 'CURRENT RULE OPTIONS', players: 'PLAYER SURVIVAL', categories: 'CHARACTER TYPES', guesses: 'REVEALED CHARACTERS', guessOrder: 'A–Z / 0–9 / Unicode', history: 'GUESS HISTORY', winnerQuestion: "WINNER'S QUESTION", answerHistory: 'guessed song {number}', answerResult: { correct: 'correct', incorrect: 'incorrect' } },
-  textStatus: { categories: 'Character types', guessed: 'Guessed', defaultCategory: 'Other characters', rules: 'Rules', nextPlayer: 'Next', category: { latin: 'Latin letters', digit: 'Digits', 'ascii-symbol': 'English keyboard symbols', kana: 'Kana', hangul: 'Hangul', cjk: 'CJK', 'other-letter': 'Other letters', 'other-symbol': 'Other symbols' } },
+  textStatus: { categories: 'Character types', guessed: 'Guessed', defaultCategory: 'Other characters', disabledCategory: 'Type display disabled', rules: 'Rules', nextPlayer: 'Next', category: { latin: 'Latin letters', digit: 'Digits', 'ascii-symbol': 'English keyboard symbols', kana: 'Kana', hangul: 'Hangul', cjk: 'CJK', 'other-letter': 'Other letters', 'other-symbol': 'Other symbols' } },
   pwa: { offlineReady: 'Caige is ready offline', updateAvailable: 'A new version is available. The current game will be saved before updating.', installReady: 'Install Caige on this device', installWaiting: 'The PWA is preparing or this browser does not expose an install prompt', installPreparing: 'The development service worker is enabled. Refresh once, then check the install button again.', installUnavailable: 'This browser did not expose an install prompt. You can also use its Install app menu.', installDismissed: 'Installation canceled', installed: 'Caige was installed on this device' },
 })
 
@@ -271,7 +271,7 @@ const jaJP = defineMessages({
   },
   actions: {
     gameActions: 'ゲーム操作', addPlayer: 'プレイヤー追加', addQuestion: '問題追加', randomPlayers: 'プレイヤーをシャッフル', randomQuestions: '問題をシャッフル',
-    restorePlayers: 'プレイヤー順を戻す', restoreQuestions: '問題順を戻す', undo: '1手戻す', reset: 'リセット', status: '戦況を書き出す', statusMenu: '戦況出力メニューを開く', copyTextStatus: '文字戦況をコピー', copyImage: '戦況画像をコピー', copyImageHint: '戦況画像をコピー', saveImage: '戦況画像を保存',
+    restorePlayers: 'プレイヤー順を戻す', restoreQuestions: '問題順を戻す', undo: '1手戻す', reset: 'リセット', status: '戦況を書き出す', statusMenu: '戦況出力メニューを開く', copyTextStatus: '文字戦況をコピー', copyCompatibleTextStatus: '互換文字をコピー', copyImage: '戦況画像をコピー', copyImageHint: '戦況画像をコピー', saveImage: '戦況画像を保存',
     export: 'JSONを書き出す', import: 'JSONを読み込む', delete: '削除', moveUp: '上へ', moveDown: '下へ', cancel: 'キャンセル', confirm: '確認', close: '閉じる', update: '今すぐ更新',
   },
   dialog: {
@@ -290,7 +290,7 @@ const jaJP = defineMessages({
     keyG: '問題順をシャッフル', keyR: '問題順を戻す', keyC: 'ゲームをリセット', keyF: '戦況出力メニューを開く',
   },
   toast: {
-    saved: 'この端末に保存しました', restored: '前回のゲームを復元しました', exported: 'バックアップをダウンロードしました', imported: 'バックアップを読み込みました', copied: '戦況画像をコピーしました', textCopied: '文字戦況をコピーしました', imageSaved: '戦況画像をこの端末に保存しました',
+    saved: 'この端末に保存しました', restored: '前回のゲームを復元しました', exported: 'バックアップをダウンロードしました', imported: 'バックアップを読み込みました', copied: '戦況画像をコピーしました', textCopied: '文字戦況をコピーしました', compatibleTextCopied: '互換文字をコピーしました', imageSaved: '戦況画像をこの端末に保存しました',
     downloaded: '画像クリップボードを利用できないため、PNGをダウンロードしました', reset: '現在のモードをリセットしました', undone: '直前のゲーム操作を取り消しました', shuffled: '問題順をシャッフルしました',
     restoredOrder: '問題の作成順に戻しました', update: '新しいバージョンがあります', invalid: '有効な1文字を入力してください', invalidTarget: '回答受付中の問題を選択してください',
     miss: '司会者が不正解と判定し、操作を記録しました', hit: '一致しました。ステータスを更新しました', solved: '司会者が正解と判定し、問題が完了しました', started: 'ゲームを開始しました',
@@ -301,7 +301,7 @@ const jaJP = defineMessages({
     question: { required: '曲名原文を入力してください。', length: '曲名原文は256文字以内にしてください。', author: 'すべての問題を既存のプレイヤーに関連付けてください。', target: '問題指定モードには1問以上必要です。' },
   },
   screenshot: { rules: '今回のルール', appliedRules: '現在のルール設定', players: 'プレイヤー生存状況', categories: '文字種', guesses: '開示済み文字', guessOrder: 'A–Z / 0–9 / Unicode', history: '回答履歴', winnerQuestion: '勝者の問題', answerHistory: '曲 {number} を回答', answerResult: { correct: '正解', incorrect: '不正解' } },
-  textStatus: { categories: '文字種', guessed: '回答済み', defaultCategory: 'その他の文字', rules: 'ルール', nextPlayer: '次', category: { latin: '英字', digit: '数字', 'ascii-symbol': '英語キーボード記号', kana: '仮名', hangul: 'ハングル', cjk: '漢字', 'other-letter': 'その他の文字', 'other-symbol': 'その他の記号' } },
+  textStatus: { categories: '文字種', guessed: '回答済み', defaultCategory: 'その他の文字', disabledCategory: '文字種表示はオフ', rules: 'ルール', nextPlayer: '次', category: { latin: '英字', digit: '数字', 'ascii-symbol': '英語キーボード記号', kana: '仮名', hangul: 'ハングル', cjk: '漢字', 'other-letter': 'その他の文字', 'other-symbol': 'その他の記号' } },
   pwa: { offlineReady: 'Caige をオフラインで使用できます', updateAvailable: '新しいバージョンがあります。更新前に現在のゲームを保存します。', installReady: 'Caige をこの端末にインストール', installWaiting: 'PWA の準備中、またはこのブラウザーではインストール案内を利用できません', installPreparing: '開発用 Service Worker は有効です。一度再読み込みしてからインストールボタンを確認してください。', installUnavailable: 'このブラウザーではインストール案内を利用できません。ブラウザーメニューの「アプリをインストール」も使用できます。', installDismissed: 'インストールをキャンセルしました', installed: 'Caige をこの端末にインストールしました' },
 })
 

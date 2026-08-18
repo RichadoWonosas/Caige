@@ -11,6 +11,17 @@ export const CATEGORY_EMOJI: Record<CharacterCategory, string> = {
   'other-symbol': '⬜',
 }
 
+export const COMPATIBLE_CATEGORY_MARKERS: Record<CharacterCategory, string> = {
+  latin: 'Ⓐ',
+  digit: '①',
+  'ascii-symbol': '＠',
+  kana: '㋐',
+  hangul: '㉻',
+  cjk: '㊥',
+  'other-letter': 'ⓐ',
+  'other-symbol': '㉿',
+}
+
 // Matches the commonly used square emoji palette closely while remaining stable in Canvas and CSS.
 export const CATEGORY_COLORS: Record<CharacterCategory, string> = {
   latin: '#dd2e44',
@@ -35,6 +46,8 @@ export const CATEGORY_INK: Record<CharacterCategory, string> = {
 }
 
 export const DEFAULT_CATEGORY_EMOJI = '⬛'
+export const COMPATIBLE_DISABLED_MARKER = '〇'
+export const COMPATIBLE_WINNER_MARKER = '★'
 export const DEFAULT_CATEGORY_COLOR = '#31373d'
 export const DEFAULT_CATEGORY_INK = '#ffffff'
 export const FULL_WIDTH_SPACE = '　'

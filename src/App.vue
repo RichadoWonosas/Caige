@@ -474,6 +474,7 @@ function boardSnapshot(): BoardSnapshot {
     }) : undefined,
     guessedCharacters: currentSortedGuesses.value,
     textGuessedCharacters: currentTextGuesses.value,
+    distinguishCharacterTypes: settings.distinguishCharacterTypes,
     categories: CATEGORY_KEYS.map((key) => ({ key, label: t(`category.${key}`), textLabel: t(`textStatus.category.${key}`), enabled: settings.distinguishCharacterTypes && settings.visibleCategories[key] })),
     labels: {
       rules: t('screenshot.rules'),
@@ -506,6 +507,7 @@ function boardSnapshot(): BoardSnapshot {
       categories: t('textStatus.categories'),
       guessed: t('textStatus.guessed'),
       defaultCategory: t('textStatus.defaultCategory'),
+      disabledCategory: t('textStatus.disabledCategory'),
       rules: t('textStatus.rules'),
       nextPlayer: t('textStatus.nextPlayer'),
       author: t('question.author'),
@@ -530,6 +532,14 @@ async function copyTextStatus() {
   try {
     await copyBoardText(boardSnapshot())
     showToast(t('toast.textCopied'))
+  } catch { showToast(t('errors.generic'), 'error') }
+}
+
+async function copyCompatibleTextStatus() {
+  closeStatusMenu()
+  try {
+    await copyBoardText(boardSnapshot(), 'compatible')
+    showToast(t('toast.compatibleTextCopied'))
   } catch { showToast(t('errors.generic'), 'error') }
 }
 
@@ -828,6 +838,7 @@ onBeforeUnmount(() => {
             ><Share2 :size="16" />{{ $t('actions.status') }}<ChevronUp :size="14" class="menu-chevron" :class="{ open: statusMenuOpen }" /><kbd>F</kbd></button>
             <div v-if="statusMenuOpen" class="status-menu" role="menu">
               <button type="button" role="menuitem" @click="copyTextStatus"><ClipboardCopy :size="16" />{{ $t('actions.copyTextStatus') }}</button>
+              <button type="button" role="menuitem" @click="copyCompatibleTextStatus"><ClipboardCopy :size="16" />{{ $t('actions.copyCompatibleTextStatus') }}</button>
               <button type="button" role="menuitem" @click="copyImage"><Image :size="16" />{{ $t('actions.copyImage') }}</button>
               <button type="button" role="menuitem" @click="saveImage"><Download :size="16" />{{ $t('actions.saveImage') }}</button>
             </div>
