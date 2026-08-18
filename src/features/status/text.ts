@@ -8,8 +8,8 @@ import type { BoardSnapshot } from '../screenshot/render'
 
 export function renderBoardText(snapshot: BoardSnapshot): string {
   const categoryLine = snapshot.categories
-    .map((category) => `${category.textLabel}${category.enabled ? CATEGORY_EMOJI[category.key] : DEFAULT_CATEGORY_EMOJI}`)
-    .join('')
+    .map((category) => `${category.enabled ? CATEGORY_EMOJI[category.key] : DEFAULT_CATEGORY_EMOJI}${category.textLabel}`)
+    .join(FULL_WIDTH_SPACE)
 
   const lines = [
     `${snapshot.textLabels.categories}：${categoryLine}`,

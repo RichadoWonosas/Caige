@@ -157,7 +157,7 @@ describe('dynamic ordering and localization', () => {
   })
 
   it('renders a compact text status with emoji masks and full-width spaces', () => {
-    const categoryLabels = ['英文字母', '数字', 'ASCII符号', '假名', '韩文', '汉字', '其他字母', '其他符号']
+    const categoryLabels = ['英文字母', '数字', '英文键盘符号', '假名', '韩文', '汉字', '其他字母', '其他符号']
     const snapshot: BoardSnapshot = {
       title: '', subtitle: '', theme: 'light', themeHue: 16, rules: '第一行\n第二行', appliedRules: ['规则 A'], nextPlayer: 'Alice',
       guessedCharacters: ['A', 'E', '1', 'の'], textGuessedCharacters: ['a', 'e', '1', 'の'],
@@ -179,7 +179,7 @@ describe('dynamic ordering and localization', () => {
       textLabels: { categories: '字符类型', guessed: '已猜', defaultCategory: '其他字符', rules: '规则', nextPlayer: '下一个', author: '出题者' },
     }
     expect(renderBoardText(snapshot)).toBe([
-      '字符类型：英文字母⬛数字⬛ASCII符号⬛假名🟩韩文🟦汉字🟪其他字母🟫其他符号⬜',
+      '字符类型：⬛英文字母　⬛数字　⬛英文键盘符号　🟩假名　🟦韩文　🟪汉字　🟫其他字母　⬜其他符号',
       '已猜：a e 1 の',
       '1. A⬛　⬛🟩',
       '2. Blue Army  -  DJ Sharpnel（出题者：Bob）',

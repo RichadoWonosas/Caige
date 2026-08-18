@@ -42,6 +42,7 @@ const { t, locale } = useI18n()
 const helpOpen = ref(false)
 const themeSettingsOpen = ref(false)
 const statusMenuOpen = ref(false)
+const setupCollapsed = ref(typeof window !== 'undefined' && window.matchMedia('(max-width: 860px)').matches)
 const toasts = ref<ToastItem[]>([])
 const hydrated = ref(false)
 const saveStatus = ref<'saved' | 'saving'>('saved')
@@ -673,21 +674,33 @@ onBeforeUnmount(() => {
     </div>
 
     <main class="workspace">
-      <aside class="panel setup-panel">
+      <aside class="panel setup-panel" :class="{ collapsed: setupCollapsed }">
         <header class="section-header">
           <div>
             <div class="eyebrow">{{ $t('setup.eyebrow') }}</div>
             <h1>{{ $t('setup.title') }}</h1>
             <p>{{ $t('setup.subtitle') }}</p>
           </div>
-          <span class="mode-code">{{ settings.mode === 'song-battle-royale' ? 'BR' : 'GL' }}</span>
+          <div class="setup-header-actions">
+            <span class="mode-code">{{ settings.mode === 'song-battle-royale' ? 'BR' : 'GL' }}</span>
+            <button
+              class="setup-collapse-button"
+              type="button"
+              :title="$t(setupCollapsed ? 'setup.expand' : 'setup.collapse')"
+              :aria-label="$t(setupCollapsed ? 'setup.expand' : 'setup.collapse')"
+              :aria-expanded="!setupCollapsed"
+              aria-controls="setup-content"
+              @click="setupCollapsed = !setupCollapsed"
+            ><ChevronUp :size="17" :class="{ collapsed: setupCollapsed }" /></button>
+          </div>
         </header>
 
-        <section class="setup-section session-rules-section">
+        <div id="setup-content" v-show="!setupCollapsed" class="setup-content">
+          <section class="setup-section session-rules-section">
           <label class="field-label" for="session-rules"><span>{{ $t('setup.sessionRules') }}</span></label>
           <textarea id="session-rules" v-model="currentSessionRules" :placeholder="$t('setup.sessionRulesPlaceholder')" maxlength="600"></textarea>
           <small>{{ $t('setup.sessionRulesHint') }}</small>
-        </section>
+          </section>
 
         <template v-if="settings.mode === 'song-battle-royale'">
           <div v-if="battle.phase !== 'setup'" class="locked-state">
@@ -754,6 +767,7 @@ onBeforeUnmount(() => {
             <button id="add-question" class="add-row-button" type="button" @click="plain.addQuestion"><Plus :size="16" />{{ $t('actions.addQuestion') }}</button>
           </section>
         </template>
+        </div>
       </aside>
 
       <div class="main-column">

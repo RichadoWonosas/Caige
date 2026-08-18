@@ -7,7 +7,7 @@ const zhHans = {
   toolbar: { local: '仅保存在此设备', saved: '已自动保存', saving: '正在保存', help: '帮助', backup: '备份', theme: '主题', language: '语言', install: '安装应用' },
   theme: { system: '跟随系统', light: '亮色', dark: '暗色', settingsTitle: '主题与配色', settingsDescription: '拖动罗盘色环选择主题色；亮暗模式和战况图会同步使用。', appearance: '外观模式', hue: '主题色相', hueFineTune: '微调色相', hueValue: '色相数值', presets: '快速颜色', useHue: '使用 {hue} 度色相', preview: '实时预览', previewTitle: '主题色舞台', previewBody: '横幅与主要操作会随色相协调变化。', previewAction: '主要操作' },
   setup: {
-    eyebrow: '设置 / 01', title: '开局设置', subtitle: '主持人先准备玩家、曲目与本局规则。', players: '玩家与顺序', questions: '题库', rules: '标准规则 · v1',
+    eyebrow: '设置 / 01', title: '开局设置', subtitle: '主持人先准备玩家、曲目与本局规则。', players: '玩家与顺序', questions: '题库', rules: '标准规则 · v1', collapse: '折叠开局设置', expand: '展开开局设置',
     editLocked: '对局进行中，设置已锁定。', unlock: '解锁编辑', noQuestions: '还没有题目。', sessionRules: '本局规则',
     sessionRulesPlaceholder: '例如：每人每轮限时 30 秒；不可使用搜索工具……', sessionRulesHint: '会显示在结算截图顶部；重置时可选择是否一并清空。',
   },
@@ -37,7 +37,7 @@ const zhHans = {
     letter: '开字符「{value}」', answer: '猜测全曲', actor: '{name} · {action}', result: { hit: '命中', miss: '未命中', invalid: '无效输入', solved: '主持人判定猜中' },
   },
   category: {
-    eyebrow: '颜色图例', title: '字符图例', distinguish: '区分字符类型', latin: '英语字母', digit: '数字', 'ascii-symbol': 'ASCII 符号', kana: '日语假名',
+    eyebrow: '颜色图例', title: '字符图例', distinguish: '区分字符类型', latin: '英语字母', digit: '数字', 'ascii-symbol': '英文键盘符号', kana: '日语假名',
     hangul: '韩语谚文', cjk: 'CJK 汉字', 'other-letter': '其他字母', 'other-symbol': '其他符号',
   },
   actions: {
@@ -72,7 +72,7 @@ const zhHans = {
     question: { required: '曲名原文不能为空。', length: '曲名原文不能超过 256 个字符。', author: '每道题都必须关联现有玩家。', target: '指定题目玩法至少需要 1 道题。' },
   },
   screenshot: { rules: '本局规则', appliedRules: '当前规则选项', players: '玩家存活情况', categories: '字符类型', guesses: '已开字符', guessOrder: 'A–Z / 0–9 / Unicode', history: '猜测历史', winnerQuestion: '胜者题目', answerHistory: '猜曲目 {number}', answerResult: { correct: '猜对', incorrect: '猜错' } },
-  textStatus: { categories: '字符类型', guessed: '已猜', defaultCategory: '其他字符', rules: '规则', nextPlayer: '下一个', category: { latin: '英文字母', digit: '数字', 'ascii-symbol': 'ASCII符号', kana: '假名', hangul: '韩文', cjk: '汉字', 'other-letter': '其他字母', 'other-symbol': '其他符号' } },
+  textStatus: { categories: '字符类型', guessed: '已猜', defaultCategory: '其他字符', rules: '规则', nextPlayer: '下一个', category: { latin: '英文字母', digit: '数字', 'ascii-symbol': '英文键盘符号', kana: '假名', hangul: '韩文', cjk: '汉字', 'other-letter': '其他字母', 'other-symbol': '其他符号' } },
   pwa: { offlineReady: 'Caige 已可离线使用', updateAvailable: '有新版本。更新前会先保存当前对局。', installReady: '安装 Caige 到本机', installWaiting: 'PWA 正在准备或当前浏览器不提供安装提示', installPreparing: '开发版 Service Worker 已启用；刷新一次后可再次检查安装按钮', installUnavailable: '当前浏览器未提供安装提示；也可以使用浏览器菜单中的“安装应用”', installDismissed: '已取消安装', installed: 'Caige 已安装到本机' },
 }
 
@@ -86,7 +86,7 @@ const zhHant = defineMessages({
   toolbar: { local: '僅儲存在此裝置', saved: '已自動儲存', saving: '正在儲存', help: '說明', backup: '備份', theme: '主題', language: '語言', install: '安裝應用程式' },
   theme: { system: '跟隨系統', light: '亮色', dark: '暗色', settingsTitle: '主題與配色', settingsDescription: '拖動羅盤色環選擇主題色；亮暗模式和戰況圖會同步套用。', appearance: '外觀模式', hue: '主題色相', hueFineTune: '微調色相', hueValue: '色相數值', presets: '快速顏色', useHue: '使用 {hue} 度色相', preview: '即時預覽', previewTitle: '主題色舞台', previewBody: '橫幅與主要操作會隨色相協調變化。', previewAction: '主要操作' },
   setup: {
-    eyebrow: '設定 / 01', title: '開局設定', subtitle: '主持人先準備玩家、曲目與本局規則。', players: '玩家與順序', questions: '題庫', rules: '標準規則 · v1',
+    eyebrow: '設定 / 01', title: '開局設定', subtitle: '主持人先準備玩家、曲目與本局規則。', players: '玩家與順序', questions: '題庫', rules: '標準規則 · v1', collapse: '摺疊開局設定', expand: '展開開局設定',
     editLocked: '對局進行中，設定已鎖定。', unlock: '解鎖編輯', noQuestions: '還沒有題目。', sessionRules: '本局規則',
     sessionRulesPlaceholder: '例如：每人每輪限時 30 秒；不可使用搜尋工具……', sessionRulesHint: '會顯示在結算圖片頂部；重設時可選擇是否一併清空。',
   },
@@ -116,7 +116,7 @@ const zhHant = defineMessages({
     letter: '開字元「{value}」', answer: '猜測全曲', actor: '{name} · {action}', result: { hit: '命中', miss: '未命中', invalid: '無效輸入', solved: '主持人判定猜中' },
   },
   category: {
-    eyebrow: '顏色圖例', title: '字元圖例', distinguish: '區分字元類型', latin: '英文字母', digit: '數字', 'ascii-symbol': 'ASCII 符號', kana: '日語假名',
+    eyebrow: '顏色圖例', title: '字元圖例', distinguish: '區分字元類型', latin: '英文字母', digit: '數字', 'ascii-symbol': '英文鍵盤符號', kana: '日語假名',
     hangul: '韓語諺文', cjk: 'CJK 漢字', 'other-letter': '其他字母', 'other-symbol': '其他符號',
   },
   actions: {
@@ -151,7 +151,7 @@ const zhHant = defineMessages({
     question: { required: '曲名原文不能為空。', length: '曲名原文不能超過 256 個字元。', author: '每道題都必須關聯現有玩家。', target: '指定題目玩法至少需要 1 道題。' },
   },
   screenshot: { rules: '本局規則', appliedRules: '目前規則選項', players: '玩家存活狀況', categories: '字元類型', guesses: '已開字元', guessOrder: 'A–Z / 0–9 / Unicode', history: '猜測歷史', winnerQuestion: '勝者題目', answerHistory: '猜曲目 {number}', answerResult: { correct: '猜對', incorrect: '猜錯' } },
-  textStatus: { categories: '字元類型', guessed: '已猜', defaultCategory: '其他字元', rules: '規則', nextPlayer: '下一位', category: { latin: '英文字母', digit: '數字', 'ascii-symbol': 'ASCII符號', kana: '假名', hangul: '韓文', cjk: '漢字', 'other-letter': '其他字母', 'other-symbol': '其他符號' } },
+  textStatus: { categories: '字元類型', guessed: '已猜', defaultCategory: '其他字元', rules: '規則', nextPlayer: '下一位', category: { latin: '英文字母', digit: '數字', 'ascii-symbol': '英文鍵盤符號', kana: '假名', hangul: '韓文', cjk: '漢字', 'other-letter': '其他字母', 'other-symbol': '其他符號' } },
   pwa: { offlineReady: 'Caige 已可離線使用', updateAvailable: '有新版本。更新前會先儲存目前對局。', installReady: '將 Caige 安裝到本機', installWaiting: 'PWA 正在準備，或目前瀏覽器未提供安裝提示', installPreparing: '開發版 Service Worker 已啟用；重新整理一次後可再次檢查安裝按鈕', installUnavailable: '目前瀏覽器未提供安裝提示；也可使用瀏覽器選單中的「安裝應用程式」', installDismissed: '已取消安裝', installed: 'Caige 已安裝到本機' },
 })
 
@@ -161,7 +161,7 @@ const enUS = defineMessages({
   toolbar: { local: 'Stored on this device only', saved: 'Autosaved', saving: 'Saving', help: 'Help', backup: 'Backup', theme: 'Theme', language: 'Language', install: 'Install app' },
   theme: { system: 'System', light: 'Light', dark: 'Dark', settingsTitle: 'Theme & color', settingsDescription: 'Drag around the compass wheel to choose an accent hue. Appearance and game images update with it.', appearance: 'Appearance', hue: 'Accent hue', hueFineTune: 'Fine-tune hue', hueValue: 'Hue value', presets: 'Quick colors', useHue: 'Use hue {hue}°', preview: 'LIVE PREVIEW', previewTitle: 'Hue-colored stage', previewBody: 'The banner and primary actions adapt to your hue.', previewAction: 'Primary action' },
   setup: {
-    eyebrow: 'SETUP / 01', title: 'Game setup', subtitle: 'Prepare the players, songs, and round rules.', players: 'Players & order', questions: 'Question bank', rules: 'Standard rules · v1',
+    eyebrow: 'SETUP / 01', title: 'Game setup', subtitle: 'Prepare the players, songs, and round rules.', players: 'Players & order', questions: 'Question bank', rules: 'Standard rules · v1', collapse: 'Collapse game setup', expand: 'Expand game setup',
     editLocked: 'Setup is locked while the game is active.', unlock: 'Unlock setup', noQuestions: 'No questions yet.', sessionRules: 'Round rules',
     sessionRulesPlaceholder: 'For example: 30 seconds per turn; no search tools…', sessionRulesHint: 'Shown at the top of the result image; resetting can optionally clear it.',
   },
@@ -191,7 +191,7 @@ const enUS = defineMessages({
     letter: 'revealed “{value}”', answer: 'guessed the full song', actor: '{name} · {action}', result: { hit: 'Hit', miss: 'Miss', invalid: 'Invalid', solved: 'Accepted by host' },
   },
   category: {
-    eyebrow: 'COLOR KEY', title: 'Character legend', distinguish: 'Distinguish character types', latin: 'Latin letters', digit: 'Digits', 'ascii-symbol': 'ASCII symbols', kana: 'Japanese kana',
+    eyebrow: 'COLOR KEY', title: 'Character legend', distinguish: 'Distinguish character types', latin: 'Latin letters', digit: 'Digits', 'ascii-symbol': 'English keyboard symbols', kana: 'Japanese kana',
     hangul: 'Korean Hangul', cjk: 'CJK ideographs', 'other-letter': 'Other letters', 'other-symbol': 'Other symbols',
   },
   actions: {
@@ -226,7 +226,7 @@ const enUS = defineMessages({
     question: { required: 'The original song title is required.', length: 'The original song title cannot exceed 256 characters.', author: 'Every question must be linked to an existing player.', target: 'Targeted-character mode requires at least 1 question.' },
   },
   screenshot: { rules: 'ROUND RULES', appliedRules: 'CURRENT RULE OPTIONS', players: 'PLAYER SURVIVAL', categories: 'CHARACTER TYPES', guesses: 'REVEALED CHARACTERS', guessOrder: 'A–Z / 0–9 / Unicode', history: 'GUESS HISTORY', winnerQuestion: "WINNER'S QUESTION", answerHistory: 'guessed song {number}', answerResult: { correct: 'correct', incorrect: 'incorrect' } },
-  textStatus: { categories: 'Character types', guessed: 'Guessed', defaultCategory: 'Other characters', rules: 'Rules', nextPlayer: 'Next', category: { latin: 'Latin letters', digit: 'Digits', 'ascii-symbol': 'ASCII', kana: 'Kana', hangul: 'Hangul', cjk: 'CJK', 'other-letter': 'Other letters', 'other-symbol': 'Other symbols' } },
+  textStatus: { categories: 'Character types', guessed: 'Guessed', defaultCategory: 'Other characters', rules: 'Rules', nextPlayer: 'Next', category: { latin: 'Latin letters', digit: 'Digits', 'ascii-symbol': 'English keyboard symbols', kana: 'Kana', hangul: 'Hangul', cjk: 'CJK', 'other-letter': 'Other letters', 'other-symbol': 'Other symbols' } },
   pwa: { offlineReady: 'Caige is ready offline', updateAvailable: 'A new version is available. The current game will be saved before updating.', installReady: 'Install Caige on this device', installWaiting: 'The PWA is preparing or this browser does not expose an install prompt', installPreparing: 'The development service worker is enabled. Refresh once, then check the install button again.', installUnavailable: 'This browser did not expose an install prompt. You can also use its Install app menu.', installDismissed: 'Installation canceled', installed: 'Caige was installed on this device' },
 })
 
@@ -236,7 +236,7 @@ const jaJP = defineMessages({
   toolbar: { local: 'この端末のみに保存', saved: '自動保存済み', saving: '保存中', help: 'ヘルプ', backup: 'バックアップ', theme: 'テーマ', language: '言語', install: 'アプリをインストール' },
   theme: { system: 'システム', light: 'ライト', dark: 'ダーク', settingsTitle: 'テーマと配色', settingsDescription: 'コンパス型の色相環をドラッグしてテーマ色を選択します。表示モードと戦況画像にも反映されます。', appearance: '表示モード', hue: 'テーマ色相', hueFineTune: '色相の微調整', hueValue: '色相値', presets: 'クイックカラー', useHue: '色相 {hue} 度を使用', preview: 'ライブプレビュー', previewTitle: 'テーマカラーステージ', previewBody: 'バナーと主要操作が選択した色相に合わせて変化します。', previewAction: '主要操作' },
   setup: {
-    eyebrow: '設定 / 01', title: 'ゲーム設定', subtitle: '司会者がプレイヤー・曲・今回のルールを準備します。', players: 'プレイヤーと順番', questions: '問題集', rules: '標準ルール · v1',
+    eyebrow: '設定 / 01', title: 'ゲーム設定', subtitle: '司会者がプレイヤー・曲・今回のルールを準備します。', players: 'プレイヤーと順番', questions: '問題集', rules: '標準ルール · v1', collapse: 'ゲーム設定を折りたたむ', expand: 'ゲーム設定を展開',
     editLocked: 'ゲーム中は設定がロックされています。', unlock: '編集ロックを解除', noQuestions: '問題がありません。', sessionRules: '今回のルール',
     sessionRulesPlaceholder: '例：1ターン30秒、検索ツールは禁止…', sessionRulesHint: '結果画像の上部に表示されます。リセット時に消去するか選択できます。',
   },
@@ -266,7 +266,7 @@ const jaJP = defineMessages({
     letter: '「{value}」を開示', answer: '曲名を回答', actor: '{name} · {action}', result: { hit: '一致', miss: '不一致', invalid: '無効', solved: '司会者が正解と判定' },
   },
   category: {
-    eyebrow: 'カラーキー', title: '文字種の凡例', distinguish: '文字種を区別', latin: '英字', digit: '数字', 'ascii-symbol': 'ASCII 記号', kana: '日本語の仮名',
+    eyebrow: 'カラーキー', title: '文字種の凡例', distinguish: '文字種を区別', latin: '英字', digit: '数字', 'ascii-symbol': '英語キーボード記号', kana: '日本語の仮名',
     hangul: '韓国語ハングル', cjk: 'CJK 漢字', 'other-letter': 'その他の文字', 'other-symbol': 'その他の記号',
   },
   actions: {
@@ -301,7 +301,7 @@ const jaJP = defineMessages({
     question: { required: '曲名原文を入力してください。', length: '曲名原文は256文字以内にしてください。', author: 'すべての問題を既存のプレイヤーに関連付けてください。', target: '問題指定モードには1問以上必要です。' },
   },
   screenshot: { rules: '今回のルール', appliedRules: '現在のルール設定', players: 'プレイヤー生存状況', categories: '文字種', guesses: '開示済み文字', guessOrder: 'A–Z / 0–9 / Unicode', history: '回答履歴', winnerQuestion: '勝者の問題', answerHistory: '曲 {number} を回答', answerResult: { correct: '正解', incorrect: '不正解' } },
-  textStatus: { categories: '文字種', guessed: '回答済み', defaultCategory: 'その他の文字', rules: 'ルール', nextPlayer: '次', category: { latin: '英字', digit: '数字', 'ascii-symbol': 'ASCII記号', kana: '仮名', hangul: 'ハングル', cjk: '漢字', 'other-letter': 'その他の文字', 'other-symbol': 'その他の記号' } },
+  textStatus: { categories: '文字種', guessed: '回答済み', defaultCategory: 'その他の文字', rules: 'ルール', nextPlayer: '次', category: { latin: '英字', digit: '数字', 'ascii-symbol': '英語キーボード記号', kana: '仮名', hangul: 'ハングル', cjk: '漢字', 'other-letter': 'その他の文字', 'other-symbol': 'その他の記号' } },
   pwa: { offlineReady: 'Caige をオフラインで使用できます', updateAvailable: '新しいバージョンがあります。更新前に現在のゲームを保存します。', installReady: 'Caige をこの端末にインストール', installWaiting: 'PWA の準備中、またはこのブラウザーではインストール案内を利用できません', installPreparing: '開発用 Service Worker は有効です。一度再読み込みしてからインストールボタンを確認してください。', installUnavailable: 'このブラウザーではインストール案内を利用できません。ブラウザーメニューの「アプリをインストール」も使用できます。', installDismissed: 'インストールをキャンセルしました', installed: 'Caige をこの端末にインストールしました' },
 })
 
